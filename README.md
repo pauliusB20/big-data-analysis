@@ -1,2 +1,2 @@
 # big-data-analysis
-Repository for storing task python code
+Repository for storing big data task python code
