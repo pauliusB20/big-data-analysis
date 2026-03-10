@@ -17,7 +17,12 @@ WORKERS = 3
 
 
 def _is_mmsi_valid(mmsi: str) -> bool:
-    return 2 <= int(mmsi[0]) <= 7 and len(mmsi) == 9
+    return (
+        mmsi.isdigit() 
+        and 2 <= int(mmsi[0]) <= 7 
+        and len(mmsi) == 9
+        and len(set(mmsi)) > 1
+    )
 
 def _read_chunks(file_path: str, chunk_size: int) -> Iterable[dict]:    
     with open(file_path) as csv_file:
