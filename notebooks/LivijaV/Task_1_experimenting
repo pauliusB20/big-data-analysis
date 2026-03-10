@@ -73,7 +73,7 @@ if __name__ == "__main__": #need this for multiprocessing to work properly on Wi
     for i in range(worker_no): #creating each worker
         p = Process(target=worker, args=(qs[i], i)) #each worker runs the worker function, queue and id as arguments
         p.start() #workers start running, pulling the chunks from the queue 
-        workers.append(p) #stores process object??
+        workers.append(p) #stores process object
 
     # Start producing chunks for queue
     produce_chunks(qs, files) 
