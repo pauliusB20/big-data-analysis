@@ -1,0 +1,91 @@
+# Simple code
+# problem here is that the MMSI can end up in different chunks
+# harder to detect anomalies if same ships are processesed by different workers
+
+
+from multiprocessing import Process, Queue
+import csv
+from datetime import datetime
+from collections import defaultdict
+
+files = ["Data/aisdk-2025-02-28.csv", "Data/aisdk-2025-03-01.csv"]
+
+def is_invalid_mmsi(mmsi):
+    return mmsi in {"000000000", "111111111", "123456789", "222222222", "333333333", "444444444", "555555555", "666666666", "777777777",
+                "888888888", "999999999", "987654321"} or not mmsi.isdigit() or len(mmsi) != 9
+
+# Streaming generator
+def stream_valid_rows(files):
+    for filename in files:
+        with open(filename, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if is_invalid_mmsi(row["MMSI"]):
+                    continue
+                yield {
+                    "mmsi": row["MMSI"],
+                    "timestamp": row["# Timestamp"],
+                    "lat": float(row["Latitude"]),
+                    "lon": float(row["Longitude"]),
+                    "sog": float(row["SOG"]) if row["SOG"] else None,
+                    "draught": float(row["Draught"]) if row["Draught"] else None
+                    }
+
+# Chunk generator
+def chunk_rows(files, chunk_size=50000):
+    chunk = [] #empty list to store rows until chunk_size is reached
+    for row in stream_valid_rows(files):
+        chunk.append(row)
+        if len(chunk) >= chunk_size:
+            yield chunk #function is paused and chuck is returned to teh caller 
+            chunk = [] #new empty list for the next chunk
+    if chunk:  # for left-over rows after for loop finishes
+        yield chunk
+
+# Producer putting the chunks into a queue for workers
+def producer(q, files):
+    for i, chunk in enumerate(chunk_rows(files)): #drop i and enumerate for real version
+        q.put(chunk) #chunks are generated one at the time and put into queue
+        print(f"Producer sent chunk {i+1}")  #monitoring - test
+    # Signaling workers to stop once all chunks are done
+    for _ in range(worker_no):
+        q.put(None)
+
+# Groupping and sorting the chunks by mmsi and timestamp
+#def group_chunks(chunk):
+#    vessels = defaultdict(list)
+#    for row in chunk:
+#        vessels[row["mmsi"]].append(row)
+#    return vessels
+
+# Worker processing chunks from the queue
+def worker(q, worker_id):
+    while True:
+        chunk = q.get()
+        if chunk is None:  #break teh process
+            break
+        # Example processing: just count rows
+        #group_chunks(chunk)
+        print(f"Worker {worker_id} processing chunk with {len(chunk)} rows")
+
+if __name__ == "__main__": #need this guard for multiprocessing to work properly on Windows?
+    worker_no = 4 #up to 5
+    q = Queue(maxsize=10)  #at most 10 chunks are stored in emmory at the time
+
+    # Start workers
+    workers = [] #empty list for workers, needed to append them later
+    for i in range(worker_no): #creating each worker
+        p = Process(target=worker, args=(q, i)) #each worker runs the worker function, queue and id as arguments
+        p.start() #workers start running, pulling the chunks from the queue 
+        workers.append(p) 
+
+    # Start producer
+    start_time = datetime.now()
+    producer(q, files) #start producing teh chunks and putting into queue
+
+    # Wait for workers to finish
+    for w in workers:
+        w.join()
+    
+    end_time = datetime.now()
+    print(f"Total run time: {(end_time - start_time).seconds}s")
