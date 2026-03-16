@@ -12,8 +12,8 @@ import os
 FILE_CSV = "aisdk-2025-02-28.csv"
 
 # CHUNK_SIZE = 1000000
-CHUNK_SIZE = 100000000
-WORKERS = 6
+CHUNK_SIZE = 10000
+WORKERS = 3
 
 
 def _is_mmsi_valid(mmsi: str) -> bool:
