@@ -11,8 +11,8 @@ import os
 
 FILE_CSV = "aisdk-2025-02-28.csv"
 
-# CHUNK_SIZE = 1000000
-CHUNK_SIZE = 10000
+# WARNING: Max chunk size = 1000
+CHUNK_SIZE = 1000
 WORKERS = 3
 
 
