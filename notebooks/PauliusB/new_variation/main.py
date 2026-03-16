@@ -11,9 +11,9 @@ import os
 
 FILE_CSV = "aisdk-2025-02-28.csv"
 
-# WARNING: This is max value. If you increase, than more memory is used exponentially
-CHUNK_SIZE = 1000
-WORKERS = 3
+# CHUNK_SIZE = 1000000
+CHUNK_SIZE = 100000000
+WORKERS = 6
 
 
 def _is_mmsi_valid(mmsi: str) -> bool:
