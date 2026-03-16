@@ -13,7 +13,10 @@ FILE_CSV = "aisdk-2025-02-28.csv"
 
 # WARNING: Max chunk size = 1000
 CHUNK_SIZE = 1000
-WORKERS = 3
+
+# WARNING: Max 7 workers
+# NOTE: check how many cores your CPU has. If 8 cores, max 8 proccesses
+WORKERS = 7
 
 
 def _is_mmsi_valid(mmsi: str) -> bool:
