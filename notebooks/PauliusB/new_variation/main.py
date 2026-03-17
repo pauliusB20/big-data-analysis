@@ -22,7 +22,7 @@ TASKS_PER_WORKER = 25
 
 # NOTE: check how many cores your CPU has. If 8 cores, max 8 proccesses
 # WARNING: tested Max 7 workers for 8 cores and no memory overflow
-WORKERS = 7
+WORKERS = 6
 
 # Quick Classes
 ShipRow = namedtuple("ShipRow", ["mmsi", "timestamp"])
