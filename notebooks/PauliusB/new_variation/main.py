@@ -106,9 +106,6 @@ if __name__ == "__main__":
             for mmsi, timestamps in mapped.items():
                 global_states[mmsi].extend(timestamps)
             
-    for mmsi in global_states:
-        global_states[mmsi].sort()
-        
     print(f"Proccesed ships {len(global_states)}")
     end_time = datetime.now()
     execution_difference = (end_time - start_time).seconds
