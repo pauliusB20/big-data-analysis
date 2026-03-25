@@ -21,14 +21,17 @@ import os
 # https://github.com/bloomberg/memray
 
 FILE_CSV = "aisdk-2025-02-28.csv"
+# FILE_CSV = "aisdk-2025-03-01.csv"
 
 # WARNING: Max chunk size = 1000
 CHUNK_SIZE = 1000
 
+SUB_CHUNK_SIZE = 100
+
 # After which count, display log message
 FINISHED_TASKS = 1000
 
-FINISHED_TEMP_TASKS = 10
+FINISHED_TEMP_TASKS = 100
 
 # Max tasks workers can proccess
 TASKS_PER_WORKER = 26
@@ -41,6 +44,16 @@ WORKERS = 6
 TIME_THRESHOLD = 14400
 
 TEMP_CSV_FILE = "temp.csv"
+# TEMP_CSV_FILE = "temp"
+
+CALCULATE_A = False
+CALCULATE_B = True
+CALCULATE_B_V2 = False
+EXPORT_FILE = True
+EXPORT_FILE_MULTI = False
+
+TEMP_FILE_AMOUNT = 3
+
 
 # Quick Classes
 ShipRow = namedtuple("ShipRow", 
@@ -156,7 +169,7 @@ def _get_coord(latitude: np.float64, longitude: np.float64) -> tuple|None:
 #     return anomalies
 
 def _read_ship_data(chunks: Iterable[int]) -> Iterable[list]:
-    chunk_size = next(chunks)
+    chunk_size = next(chunks)   
     chunk = []
     with open(TEMP_CSV_FILE, "r") as file:
         csv_reader = csv.reader(file)
@@ -167,8 +180,7 @@ def _read_ship_data(chunks: Iterable[int]) -> Iterable[list]:
             chunk.append(row)
     
     if chunk:
-        yield chunk
-            
+        yield chunk           
                 
 
 def process_ship_chunk(chunk: list[dict]) -> tuple[int, dict]:            
@@ -176,14 +188,22 @@ def process_ship_chunk(chunk: list[dict]) -> tuple[int, dict]:
     pid = os.getpid()
     return pid, result
 
-def _read_csv_temp_file_bulk() -> Iterable[list]:
+def _read_csv_temp_file_chunk(chunk_size: int) -> Iterable[list]:
+    chunk = []
     with open(TEMP_CSV_FILE, "r") as file:
         csv_reader = csv.reader(file)
         for row in csv_reader:
-            yield row
+            if len(chunk) >= chunk_size:
+                yield chunk
+                chunk = []
+            
+            chunk.append(row)
+    
+    if chunk:
+        yield chunk
+                
 
-def process_ship_chunk_stats(chunk: list[list]) -> dict:    
-    close_ships = 0
+def process_ship_chunk_anomalies(chunk: list[list]) -> dict:    
     anomaly_count = 0
     
     # anomaly counting
@@ -228,33 +248,27 @@ def process_ship_chunk_stats(chunk: list[list]) -> dict:
                 point_previous, 
                 point_current, 
                 Unit.KILOMETERS
-            ) > 0.5 and 
+            ) > 1 and 
             time_diff > TIME_THRESHOLD
         )
     
+    pid = os.getpid()
+    
+    return pid, anomaly_count
+
+def process_ship_chunk_loitering(chunk_a: list[list]) -> dict:    
+    loitering_count = 0
+    
     # For loitering 
-    for j in range(1, len(chunk)):
-        (
-            mmsi_previous_a, 
-            timestamp_previous_a, 
-            latitude_previous_a, 
-            longitude_previous_a, 
-            sog_previous_a
-        ) = chunk[i - 1]
+    for i in range(1, len(chunk_a)):
+        timestamp_previous_a = chunk_a[i - 1][1]
         (
             mmsi_a, 
             timestamp_a, 
             latitude_a, 
             longitude_a, 
             sog_a
-        ) = chunk[i]
-        point_previous_a = _get_coord(
-            np.float64(latitude_previous_a), 
-            np.float64(longitude_previous_a)
-        )
-        if not point_previous_a:
-            continue
-        
+        ) = chunk_a[i]
         point_a = _get_coord(
             np.float64(latitude_a), 
             np.float64(longitude_a)
@@ -262,128 +276,94 @@ def process_ship_chunk_stats(chunk: list[list]) -> dict:
         if not point_a:
             continue
         
-        sog_a = np.float64(sog_a)     
-        previous_check = None
-        temp_reader = _read_csv_temp_file_bulk()
-        checked_mmsi = []
-        for row in temp_reader:
-            (mmsi_b, timestamp_b, latitude_b, longitude_b, sog_b) = row
-            point_b = _get_coord(np.float64(latitude_b), np.float64(longitude_b))
-            if not point_b:
-                continue
-            
-            ship_distance = haversine(point_a, point_b, Unit.MILES)
-            if (
-                previous_check and 
-                previous_check[0] != mmsi_a and 
-                previous_check[0] == mmsi_b and 
-                ship_distance <= 500 and 
-                np.float64(sog_a) < 1.0 and
-                np.float64(sog_b) < 1.0 and 
-                mmsi_b not in checked_mmsi
-            ): 
-               # ship a
-               ship_a_previous_time = datetime.strptime(timestamp_previous_a, "%d/%m/%Y %H:%M:%S") 
-               ship_a_current_time = datetime.strptime(timestamp_a, "%d/%m/%Y %H:%M:%S")
-               ship_a_time_diff = _get_time_diff(ship_a_previous_time, ship_a_current_time)   
+        sog_a = np.float64(sog_a) 
+        # ship a
+        ship_a_previous_time = datetime.strptime(timestamp_previous_a, "%d/%m/%Y %H:%M:%S") 
+        ship_a_current_time = datetime.strptime(timestamp_a, "%d/%m/%Y %H:%M:%S")
+        ship_a_time_diff = _get_time_diff(ship_a_previous_time, ship_a_current_time)   
+        if ship_a_time_diff < 7200:
+            continue
+        
+        # comparing with other ships
+        for chunk_b in _read_csv_temp_file_chunk(SUB_CHUNK_SIZE):
+            for j in range(1, len(chunk_b)):
+                (
+                    mmsi_b_previous, 
+                    timestamp_b_previous, 
+                    _, _, _
+                ) = chunk_b[j - 1]                
                 
-               # ship b
-               previous_time = datetime.strptime(previous_check[1], "%d/%m/%Y %H:%M:%S") 
-               current_time = datetime.strptime(timestamp_b, "%d/%m/%Y %H:%M:%S")
-               time_diff_compare = _get_time_diff(previous_time, current_time)
-               
-               close_ships += int(ship_a_time_diff > 7200 and time_diff_compare > 7200)
-               
-               
-               checked_mmsi.append(mmsi_b)
-            
-            if mmsi_a != mmsi_b:
-                previous_check = row
-            
-            # sog_b = np.float64(sog_b)
-            # ship_loitered = []
-            
-            # # if len(ship_loitered) >= 2:
-            # #     start_time, end_time = ship_loitered
-            # #     start_time = datetime.strptime(start_time, "%d/%m/%Y %H:%M:%S")
-            # #     end_time = datetime.strptime(end_time, "%d/%m/%Y %H:%M:%S")
-            # #     time_diff = _get_time_diff(start_time, end_time)
-            # #     if time_diff >= 7200:
-            # #         close_ships += 1
-            # #     ship_loitered = []
+                (
+                    mmsi_b, 
+                    timestamp_b, 
+                    latitude_b, 
+                    longitude_b, 
+                    sog_b
+                ) = chunk_b[j]
                 
-            # if mmsi_a != mmsi_b and mmsi_b not in checked_mmsi:
-        #         ship_distance = haversine(point_a, point_b, Unit.MILES)
+                if mmsi_b_previous != mmsi_b:
+                   continue 
+               
+                if mmsi_a == mmsi_b:
+                    continue
                 
-        #         # TODO 500 to variable
-        #         appropriate_distance_sog = (
-        #             ship_distance <= 500 and 
-        #             sog_b < 1.0 and 
-        #             sog_a < 1.0 
-        #         )
-        # # if appropriate_distance_sog and len(ship_loitered) <= 2:
-        #         close_ships += int(appropriate_distance_sog)
-        #         checked_mmsi.append(mmsi_b)
-                    # ship_loitered.append(timestamp_a)  
+                timestamp_b_previous = datetime.strptime(timestamp_b_previous, "%d/%m/%Y %H:%M:%S") 
+                timestamp_b = datetime.strptime(timestamp_b, "%d/%m/%Y %H:%M:%S")
+                ship_b_time_diff = _get_time_diff(
+                    timestamp_b_previous, 
+                    timestamp_b
+                )   
+                if ship_b_time_diff < 7200:
+                    continue
+                
+                point_b = _get_coord(
+                    np.float64(latitude_b), 
+                    np.float64(longitude_b)
+                )
+                if not point_b:
+                    continue
+                
+                ship_near_distance = haversine(point_a, point_b, Unit.MILES)
+                loitering_count += int(
+                    ship_near_distance <= 500 and 
+                    np.float64(sog_a) < 1.0 and
+                    np.float64(sog_b) < 1.0
+                )
+                
+                
+                # if (
+                #     previous_check and 
+                #     previous_check[0] != mmsi_a and 
+                #     previous_check[0] == mmsi_b and 
+                #     ship_distance <= 500 and 
+                #     np.float64(sog_a) < 1.0 and
+                #     np.float64(sog_b) < 1.0 and 
+                # ): 
+                    
+                        
+                #     # ship b
+                #     previous_time = datetime.strptime(previous_check[1], "%d/%m/%Y %H:%M:%S") 
+                #     current_time = datetime.strptime(timestamp_b, "%d/%m/%Y %H:%M:%S")
+                #     time_diff_compare = _get_time_diff(previous_time, current_time)               
+                #     loitering_count += int(time_diff_compare >= 7200)               
+                    
+                
+
     
     pid = os.getpid()
     
-    result = {
-        "anomalies" : anomaly_count,
-        "close_ships" : close_ships
-    }
-    
-    return pid, result
+    return pid, loitering_count
 
-# def process_ship_records(ship_records: list[list]) -> tuple[int, int]:
-#     # TODO:
-#     # add anomaly calculation here
-#     pid = os.getpid()    
-#     ship_records.sort(key=lambda x: datetime.strptime(x[1], "%d/%m/%Y %H:%M:%S"))
-#     anomalies = 0
-    
-#     for i in range(1, len(ship_records)):
-#         ship_record_a, ship_record_b = ship_records[i-1], ship_records[i]
-        
-#         # Calculate time difference
-#         ship_a_time = datetime.strptime(
-#             ship_record_a[1], 
-#             "%d/%m/%Y %H:%M:%S"
-#         )
-#         ship_b_time = datetime.strptime(
-#             ship_record_b[1], 
-#             "%d/%m/%Y %H:%M:%S"
-#         )        
-#         time_diff = _get_time_diff(ship_a_time, ship_b_time)
-        
-#         # Calculate heaversine distance
-#         ship_a_point = _get_coord(
-#             np.float64(ship_record_a[2]),
-#             np.float64(ship_record_a[3])
-#         )
-        
-#         ship_b_point = _get_coord(
-#             np.float64(ship_record_b[2]),
-#             np.float64(ship_record_b[3])
-#         )
-#         if ship_a_point and ship_b_point:
-#             distance = haversine(ship_a_point, ship_b_point, Unit.KILOMETERS)
-            
-#             anomalies += int(time_diff > TIME_THRESHOLD and distance > 1)
-    
-#     return pid, anomalies
-    
-    # end_time = datetime.now()
-    # execution_time = (end_time - start_time).seconds
 
-    # return result, pid, execution_time
-
-if __name__ == "__main__":
+if __name__ == "__main__":    
+    anomaly_total = 0
+    loitering_total = 0
     
     print("Starting SHIP Data tool")
     
+    print(f"1. Reading data for processing using path={FILE_CSV}")
     reader_cursor = _read_chunks(FILE_CSV, CHUNK_SIZE)
-    ships = defaultdict(list)
+    ships_mapped = defaultdict(list)
     start_time = datetime.now()   
     
     task_counts = defaultdict(list)
@@ -400,71 +380,79 @@ if __name__ == "__main__":
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 print(f"Proccess = {pid} Finished proccesing {FINISHED_TASKS} at {timestamp}")                
             
-            # anomalies_total += anomalies
             # merge to global
             for mmsi, ship_records in ships.items():
-                ships[mmsi].extend(ship_records)
+                ships_mapped[mmsi].extend(ship_records)
     
-    print("Sorting results")
-    for mmsi in ships:
-        ships[mmsi].sort(key=lambda x: x.timestamp)
-            
-    print("Exporting to temp csv file")
-    chunks = []
-    with open(TEMP_CSV_FILE, "w") as file:
-        writer = csv.writer(file)
-        for mmsi, ships in ships.items():
-            writer.writerows(ships)
-            chunks.append(len(ships))
+    print("2. Sorting temp cached results")
+    for mmsi in ships_mapped:
+        ships_mapped[mmsi].sort(key=lambda x: x.timestamp)    
     
-    chunks = iter(chunks)
-    print("Calculating statistics")
-    ship_reader_cursor = _read_ship_data(chunks)
+    if EXPORT_FILE:
+        print("3. Exporting to temp csv file")
+        with open(TEMP_CSV_FILE, "w") as file:
+            writer = csv.writer(file)
+            for mmsi, ship_records in ships_mapped.items():
+                writer.writerows(ship_records)
     
-    close_ships_total = 0
-    anomaly_total = 0
     
-    with Pool(processes=WORKERS) as pool:
-        for pid, result in tqdm(
-            pool.imap(process_ship_chunk_stats, ship_reader_cursor, chunksize=10),
-            desc="Processing temp file chunks"
-        ):
-            task_ship_counts[pid] = task_ship_counts.get(pid, 0) + 1
-            if task_ship_counts[pid] % FINISHED_TEMP_TASKS == 0:
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                print(f"Proccess = {pid} Finished temp proccesing {FINISHED_TEMP_TASKS} at {timestamp}")                
-            
-            anomaly_total += result["anomalies"]    
-            close_ships_total += result["close_ships"]   
+    if EXPORT_FILE_MULTI:
+        file_paths = []
+        
+        for idx in range(TEMP_FILE_AMOUNT):
+            written_records = 0
+            temp_file_new = TEMP_CSV_FILE + str(idx) + ".csv"
+            with open(temp_file_new, "w") as file:
+                writer = csv.writer(file)
+                for mmsi, ship_records in ships_mapped.items():
+                    writer.writerows(ship_records)
+                    written_records += len(ship_records)        
+            file_paths.append(temp_file_new)        
+        
+    # Prepearing chunk size for reading
+    ship_chunks = []
+    for mmsi, ship_records in ships_mapped.items():
+        ship_chunks.append(len(ship_records))
     
+    if CALCULATE_A:
+        print("4. Reading data from temp file and calculating anomalies")
+        chunks = iter(ship_chunks)
+        ship_reader_cursor = _read_ship_data(chunks)    
+        
+        with Pool(processes=WORKERS) as pool:
+            for pid, anomalies in tqdm(
+                pool.imap(process_ship_chunk_anomalies, ship_reader_cursor, chunksize=10),
+                desc="Processing file chunks ship anomalies"
+            ):
+                task_ship_counts[pid] = task_ship_counts.get(pid, 0) + 1
+                if task_ship_counts[pid] % FINISHED_TEMP_TASKS == 0:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    print(f"Proccess = {pid} Finished anomalies proccesing {FINISHED_TEMP_TASKS} at {timestamp}")                
+                
+                anomaly_total += anomalies   
+    
+    if CALCULATE_B:
+        print("5. Reading data from temp file and calculating loitering")
+        chunks = iter(ship_chunks)           
+        ship_reader_cursor = _read_ship_data(chunks) 
+        with Pool(processes=WORKERS) as pool:
+            for pid, loitering in tqdm(
+                pool.imap(process_ship_chunk_loitering, ship_reader_cursor, chunksize=3),
+                desc="Processing file chunks ship loitering"
+            ):
+                task_ship_counts[pid] = task_ship_counts.get(pid, 0) + 1
+                if task_ship_counts[pid] % FINISHED_TEMP_TASKS == 0:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    print(f"Proccess = {pid} Finished loitering proccesing {FINISHED_TEMP_TASKS} at {timestamp}")                
+                
+                loitering_total += loitering  
+                
+    if CALCULATE_B_V2:
+        pass
+    
+    print("Results")
     print(f"A) anomaly_total: {anomaly_total}")
-    print(f"B) close_ships: {close_ships_total}")
-    
-    
-    
-    # # export to JSON file
-    # print("Exporting to temp jsonl file")
-    # with open("temp.jsonl", "w", encoding="utf-8") as file_json:
-    #     for key, value in global_states.items():
-    #         file_json.write(json.dumps({key: value}) + "\n")
-            
-    # print("Reading from temp file ship data")
-    
-    # temp_reader_cusor = _read_ship_records(file_path="temp.jsonl", chunk_size=CHUNK_SIZE)
-    # anomalies_total = 0
-    # with Pool(processes=WORKERS) as pool:
-    #     for pid, anomalies in tqdm(
-    #         pool.imap(process_ship_records, temp_reader_cusor, chunksize=TASKS_PER_WORKER),
-    #         desc="Processing ship chunks"
-    #     ):
-    #         task_counts[pid] = task_counts.get(pid, 0) + 1
-            
-    #         # TODO: need seperate divider for temp read like FINISHED_TASKS_TEMP or smth
-    #         if task_counts[pid] % 10 == 0:
-    #             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    #             print(f"Proccess = {pid} Finished temp proccesing {FINISHED_TEMP_TASKS} at {timestamp}")                
-            
-    #         anomalies_total += anomalies
+    print(f"B) loitering: {loitering_total}")
     
     end_time = datetime.now()
     execution_difference = (end_time - start_time).seconds
