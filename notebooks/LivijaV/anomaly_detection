@@ -1,0 +1,381 @@
+import csv
+import os
+import time
+import itertools
+from datetime import datetime, timezone
+from collections import defaultdict
+from multiprocessing import Pool
+from haversine import haversine
+from tqdm import tqdm
+import psutil
+import pickle
+
+"""
+Big issue here - heavy on the main process. 
+
+Anomaly detection issues: 
+
+Anomaly A: 
+detects a lot of harbour movement, ships re-appear in differnet location,
+but it's within 15km in the same harbour/fjord, etc. 
+Clearly not suspicious. Can be filtered by increasing what is considered significant movement (20-50 km). 
+
+Anomaly B: detects some tugboats, service vessels in the harbour. 
+Clear harbour activity, not suspicious. Cannot be filtered by type. 
+
+Anomaly C: Draught not recorded in data?
+
+Anomaly D: Hard to filter out instances of GPS malfunctioning - pinging from different locations at once, but no movement. 
+Also base-station malfunctioning ais data - takes up mmsi of different vessels. 
+
+Possible solution: trying to track consistency of A and B location movements of the same vessel.
+But still might miss some slow moveming/stationary ships sharing same MMSI. 
+
+"""
+
+
+
+# CONFIGURATION 
+# -----------------------------
+FILE_CSV = "Data/aisdk-2025-03-01.csv"
+CHUNK_SIZE = 50000 
+WORKERS = 5
+TASKS_PER_WORKER = 10 #experimenting
+
+# Anomaly detection thresholds (A & D)
+MIN_SPEED, MIN_DISTANCE, MAX_SPEED = 5, 10, 111.12 
+
+# B Thresholds
+SOG_THRESHOLD = 1.0
+B_HOURS = 2.0 
+PROXIMITY_DIST = 0.5    # 500 meters max separation
+MAX_GAP_MINUTES = 10 
+MIN_DISPLACEMENT = 0.3  # Must move 0.3km total (prevents harbor activity)
+AVG_SOG_MIN = 0.01       # Must have some drift (prevent harbour activity)
+MAX_DIST_VARIATION = 0.1  # 0.1 km, ships have to stay consistently close
+
+IGNORE_STATUS_B = {"Moored", "At anchor", "Aground", "Not under command"}
+VALID_MOBILE_TYPES = {"Class A", "Class B"}
+
+# -------------------------
+# HELPER FUNCTIONS
+# -------------------------
+
+# Parsing csv file
+def fast_parse(ts: str) -> int:
+    try:
+        d, m, y = map(int, ts[:10].split('/'))
+        H, M, S = map(int, ts[11:].split(':'))
+        return int(datetime(y, m, d, H, M, S, tzinfo=timezone.utc).timestamp())
+    except: return 0
+
+def format_ts(ts: int) -> str:
+    return datetime.fromtimestamp(ts, timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+# Valid MMSI format
+def is_mmsi_valid(mmsi: str) -> bool:
+    return mmsi.isdigit() and 2 <= int(mmsi[0]) <= 7 and len(mmsi) == 9 and len(set(mmsi)) > 1
+
+# For anomaly B, definig suspicious activity
+def is_suspicious_encounter(p):
+    total_drift = haversine((p[2], p[3]), (p[4], p[5]))
+    avg_sog = p[6] / p[7] if p[7] > 0 else 0 #for detecting sttaionary ships - likely harbour activity
+    duration = (p[1] - p[0]) / 3600
+    dist_variation = p[9] - p[8]
+    return (duration >= B_HOURS and total_drift >= MIN_DISPLACEMENT and 
+            avg_sog >= AVG_SOG_MIN and dist_variation <= MAX_DIST_VARIATION)
+
+# -------------------------
+# Worker function 
+# -------------------------
+
+def process_ship_chunk(lines_and_map):
+    lines, idx_map = lines_and_map
+    pid = os.getpid()
+    process = psutil.Process(pid)
+    ships = defaultdict(list)
+    reader = csv.reader(lines)
+    
+    """
+    Main process reads lines and supplies chunks to workers to parse, check and detect anomalies.
+    This is done to decrease idle time for workers in case of slow parsing.
+    For me it works faster, but check if logic is OK with others.
+
+    """
+    for row in reader:
+        try:
+            if row[idx_map['mobile_type']] not in VALID_MOBILE_TYPES: continue
+            mmsi = row[idx_map['mmsi']]
+            if not is_mmsi_valid(mmsi): continue
+            lat, lon = float(row[idx_map['lat']]), float(row[idx_map['lon']])
+            if not (50 <= lat <= 70 and 5 <= lon <= 40): continue #roughly Baltic see coordinates - to prevent faulty lat/lon data
+            ts = fast_parse(row[idx_map['ts']])
+            if ts == 0: continue
+            sog = float(row[idx_map['sog']]) if row[idx_map['sog']] else 0.0
+            nav = row[idx_map['nav']]
+            draught = float(row[idx_map['draught']]) if row[idx_map['draught']] else 0.0
+            ships[mmsi].append((mmsi, ts, lat, lon, sog, nav, draught))
+        except: continue
+
+    # ANOMALY DETECTION - inside workers
+
+    anoms_A, anoms_D, anoms_C = [], [], []
+    first_pts, last_pts, low_sog_cands = {}, {}, {}
+
+    for mmsi, rows in ships.items():
+        rows.sort(key=lambda x: x[1])
+        if not rows: continue
+        
+        first_pts[mmsi], last_pts[mmsi] = rows[0], rows[-1]
+
+
+        for i in range(len(rows) - 1):
+            prev, curr = rows[i], rows[i+1]
+            td = (curr[1] - prev[1]) / 3600 #time difference
+            if td <= 0: continue
+            dist = haversine((prev[2], prev[3]), (curr[2], curr[3])) #calculating haversine dist
+            speed = dist / td
+            
+            #recording data
+            rec = [mmsi, round(td, 2), round(dist, 2), round(speed, 2), 
+                   format_ts(prev[1]), format_ts(curr[1]), prev[3], prev[2], curr[3], curr[2]]
+        
+
+            # ANOMALY A
+            if td > 4 and dist > MIN_DISTANCE and MIN_SPEED < speed <= MAX_SPEED and prev[5] not in IGNORE_STATUS_B:
+                anoms_A.append(rec)
+            
+            # ANOMALY D
+
+            """
+            Idea here is prevent recording faulty GPS data as illicit activity.
+            Filter cases where only one random location for MMSI is recorded - random glitch
+
+            Common type of GPS glitch - base stations take up random ship MMSI's.
+            Cases where same MMSI report from one constant location + bunch of other ones simulataneously 
+            are filtered.
+            """
+            if dist > MIN_DISTANCE and speed > MAX_SPEED:
+                is_persistent = False #assumes glitch
+                lookahead = 3  # number of future points to check
+
+                for j in range(1, lookahead + 1): #comparing ping 1 vs ping 3 - to see if location bounces back
+                    if i + j >= len(rows):
+                        break
+                    future = rows[i + j] 
+                    d_future = haversine((curr[2], curr[3]), (future[2], future[3]))
+                    t_future = (future[1] - curr[1]) / 3600 
+
+                    if t_future > 0:
+                        sp_future = d_future / t_future
+                        if sp_future <= MAX_SPEED:
+                            is_persistent = True #real movement - not a glitch (likely real spoofing)
+                            break
+
+                if not is_persistent:
+                    # This is a single point glitch - ignore
+                    continue
+
+                anoms_D.append(rec)
+
+            # ANOMALY C: 
+
+            if td > 2: 
+                draught_curr = float(curr[6])
+                draught_last = float(prev[6])
+                if draught_last == 0 or draught_curr == 0:#to prevent devision by 0
+                    continue
+                draught_change = abs(draught_curr - draught_last)/draught_last
+                if draught_change > 0.05:
+                    # Record anomaly
+                    rec_C = [
+                    curr[0],                 # mmsi
+                    format_ts(prev[1]),      # start time
+                    format_ts(curr[1]),      # end time
+                    round(td, 2),            # gap in hours
+                    round(draught_last, 2),  # draught at start
+                    round(draught_curr, 2),  # draught at end
+                    round(draught_change, 2),# draught change
+                    round(prev[2], 6),       # start latitude
+                    round(prev[3], 6),       # start longitude
+                    round(curr[2], 6),       # end latitude
+                    round(curr[3], 6)        # end longitude
+                ]
+                    anoms_C.append(rec_C)
+
+
+        # ANOMALY B: SOG/Nav Status filter 
+        """
+        Idea here is to record slow moving ships and ignore the harboured ones.
+        Slow movers are then collected as candidates for anomaly B, will be checked by main process
+        """
+        sog_rows = [r for r in rows if r[4] < SOG_THRESHOLD and r[5] not in IGNORE_STATUS_B]
+        if sog_rows:
+            s_sog = sum(r[4] for r in sog_rows)
+            low_sog_cands[mmsi] = (sog_rows[0][1], sog_rows[-1][1], sog_rows[-1][2], sog_rows[-1][3], s_sog, len(sog_rows))
+
+    # Recording RAM usage - not sure if works as expected
+    mem_gb = process.memory_info().rss / (1024**3) #convert to GB
+    return anoms_A, anoms_D, first_pts, last_pts, low_sog_cands, (pid, mem_gb)
+
+# -------------------------
+# MAIN
+# ------------------------
+if __name__ == "__main__":
+    start_time = time.time()
+
+    main_process = psutil.Process(os.getpid())
+    
+    # Reading file, supply lines to workers
+    with open(FILE_CSV, 'r') as f:
+        header_row = next(csv.reader(f))
+        idx_map = {k: header_row.index(v) for k, v in [
+            ('mmsi','MMSI'), ('ts','# Timestamp'), ('lat','Latitude'), 
+            ('lon','Longitude'), ('sog','SOG'), ('nav','Navigational status'),
+            ('mobile_type', 'Type of mobile'), ('draught', 'Draught')]}
+
+    vessels = defaultdict(set)
+    last_seen, low_sog_tracker, proximity_tracker = {}, {}, {}
+
+    #-------------------------------
+    # Writting csv files with results - mostly used as check, can be skipped
+    #-------------------------------
+    ad_header = ["mmsi","gap_hours","distance_km","speed","start_time","end_time","start_lon","start_lat","end_lon","end_lat"]
+
+    with open("anomalies_A.csv", "w", newline="") as fA, \
+         open("anomalies_D.csv", "w", newline="") as fD, \
+         open("anomalies_C.csv", "w", newline="") as fC, \
+         open("anomalies_B.csv", "w", newline="") as fB, \
+         open("memory_log.csv", "w", newline="") as fMem:
+        
+        writerA, writerD, writerC, writerB, writerM = csv.writer(fA), csv.writer(fD), csv.writer(fC), csv.writer(fB), csv.writer(fMem)
+        writerA.writerow(ad_header); writerD.writerow(ad_header), 
+        writerC.writerow(["mmsi", "start_time", "end_time", "gap_hours",
+        "draught_start", "draught_end", "draught_change",
+        "start_lat", "start_lon", "end_lat", "end_lon"])
+        
+        writerB.writerow(["mmsi_1", "mmsi_2", "start", "end", 
+                          "dur_hrs", "start_lat", "start_lon", 
+                          "end_lat", "end_lon", "avg_sog", "drift_km"])
+        writerM.writerow(["timestamp", "pid", "ram_gb"])
+
+        with Pool(processes=WORKERS) as pool:
+            f_handle = open(FILE_CSV, 'r')
+            next(f_handle)
+            
+            def get_chunks():
+                while True:
+                    chunk = list(itertools.islice(f_handle, CHUNK_SIZE))
+                    if not chunk: break
+                    yield (chunk, idx_map)
+
+            for a_A, a_D, f_pts, l_pts, sog_cands, mem in tqdm(pool.imap_unordered(process_ship_chunk, get_chunks(), chunksize=TASKS_PER_WORKER), desc="Processing"):
+                # Total RAM used by the Main process (including its trackers)
+                main_mem = main_process.memory_info().rss / (1024**3)
+                
+                # Get total system RAM % to see if you're about to crash
+                sys_mem_pct = psutil.virtual_memory().percent
+                
+                writerM.writerow([round(time.time()-start_time, 2), "MAIN", round(main_mem, 3)])
+            
+                
+                for r in a_A: writerA.writerow(r); vessels[r[0]].add("A")
+                for r in a_D: writerD.writerow(r); vessels[r[0]].add("D")
+
+                # Bridge A, C & D - detect cross-chunk anomalies using last_seen 
+                for mmsi, curr_f in f_pts.items():
+                    if mmsi in last_seen:
+                        p_l = last_seen[mmsi]
+                        td = (curr_f[1] - p_l[1]) / 3600
+
+                        if td > 0:
+                            dist = haversine((p_l[2], p_l[3]), (curr_f[2], curr_f[3]))
+                            sp = dist / td
+                            if dist > MIN_DISTANCE:
+                                rec = [mmsi, round(td, 2), round(dist, 2), round(sp, 2), format_ts(p_l[1]), format_ts(curr_f[1]), p_l[3], p_l[2], curr_f[3], curr_f[2]]
+                                if td > 4 and MIN_SPEED < sp <= MAX_SPEED: writerA.writerow(rec); vessels[mmsi].add("A")
+                                if sp > MAX_SPEED: writerD.writerow(rec); vessels[mmsi].add("D")
+
+                                # Anomaly C:
+                                draught_curr = curr_f[6]
+                                draught_last = p_l[6]
+                                if draught_last == 0 or draught_curr == 0:
+                                    continue
+                                draught_change = abs(draught_curr - draught_last)/draught_last
+                                if td > 2 and draught_change > 0.05: 
+                                    rec_C_bridge = [
+                                    curr_f[0],
+                                    format_ts(p_l[1]),
+                                    format_ts(curr_f[1]),
+                                    round(td,2),
+                                    round(p_l[6],2),
+                                    round(curr_f[6],2),
+                                    round(abs(curr_f[6]-p_l[6]),2),
+                                    round(p_l[2],6),
+                                    round(p_l[3],6),
+                                    round(curr_f[2],6),
+                                    round(curr_f[3],6)
+                                    ]
+                                    writerC.writerow(rec_C_bridge); vessels[mmsi].add("C")
+                
+                for mmsi, pt in l_pts.items(): last_seen[mmsi] = pt
+                
+                #------------------------
+                # B anomaly detection
+
+                curr_max_ts = 0
+
+                # Check if the ship has been seen, if so - update data
+                for mmsi, (s, e, lat, lon, s_sog, cnt) in sog_cands.items():
+                    curr_max_ts = max(curr_max_ts, e)
+                    if mmsi in low_sog_tracker:
+                        old = low_sog_tracker[mmsi]
+                        low_sog_tracker[mmsi] = (old[0], e, lat, lon, old[4]+s_sog, old[5]+cnt)
+                    else:
+                        low_sog_tracker[mmsi] = (s, e, lat, lon, s_sog, cnt)
+                cands = list(low_sog_tracker.items())
+
+                # comparing two close ships, calulating distance 
+                for i, (m1, d1) in enumerate(cands):
+                    for j in range(i+1, len(cands)):
+                        m2, d2 = cands[j]
+                        if abs(d1[2]-d2[2]) < 0.01 and abs(d1[3]-d2[3]) < 0.01: #check if close lon/lat, only then compute distance
+                            dist_now = haversine((d1[2], d1[3]), (d2[2], d2[3]))
+
+                            if dist_now <= PROXIMITY_DIST:
+                                pair = tuple(sorted((m1, m2))) 
+                                curr_t = max(d1[1], d2[1])
+
+                                # Check if pair is new or continuation
+                                # If continuing: check if been apart for some time. If so - record as new encounter
+                                # Else: update data
+                                if pair in proximity_tracker:
+                                    p = proximity_tracker[pair]
+                                    if (curr_t - p[1]) / 60 > MAX_GAP_MINUTES:
+                                        if is_suspicious_encounter(p):
+                                            writerB.writerow([pair[0], pair[1], format_ts(p[0]), format_ts(p[1]), round((p[1]-p[0])/3600, 2), p[2], p[3], p[4], p[5], round(p[6]/p[7], 2), round(haversine((p[2],p[3]),(p[4],p[5])), 2)])
+                                            vessels[pair[0]].add("B"); vessels[pair[1]].add("B")
+                                        proximity_tracker[pair] = [curr_t, curr_t, d1[2], d1[3], d1[2], d1[3], d1[4]+d2[4], d1[5]+d2[5], dist_now, dist_now]
+                                    else:
+                                        p[1], p[4], p[5] = curr_t, d1[2], d1[3]
+                                        p[6], p[7] = p[6] + (d1[4]+d2[4]), p[7] + (d1[5]+d2[5])
+                                        p[8], p[9] = min(p[8], dist_now), max(p[9], dist_now)
+                                else:
+                                    proximity_tracker[pair] = [curr_t, curr_t, d1[2], d1[3], d1[2], d1[3], d1[4]+d2[4], d1[5]+d2[5], dist_now, dist_now]
+
+                # Slow ships "expire" if not reported as slow for a while
+                # before deleting - check last encounter
+                if curr_max_ts > 0:
+                    expired = [m for m, d in low_sog_tracker.items() if (curr_max_ts - d[1]) > 3600]
+                    for m in expired:
+                        for pair in list(proximity_tracker.keys()):
+                            if m in pair:
+                                p = proximity_tracker.pop(pair)
+                                if is_suspicious_encounter(p):
+                                    writerB.writerow([pair[0], pair[1], format_ts(p[0]), format_ts(p[1]), round((p[1]-p[0])/3600, 2), p[2], p[3], p[4], p[5], round(p[6]/p[7], 2), round(haversine((p[2],p[3]),(p[4],p[5])), 2)])
+                                    vessels[pair[0]].add("B"); vessels[pair[1]].add("B")
+                        del low_sog_tracker[m]
+
+    with open("mmsi_anomalies.pkl", "wb") as f: pickle.dump(dict(vessels), f)
+    print(f"\n--- DONE ---")
+    print(f"Summary: A:{sum('A' in v for v in vessels.values())}, D:{sum('D' in v for v in vessels.values())}, C:{sum('C' in v for v in vessels.values())}, B:{sum('B' in v for v in vessels.values())}")
