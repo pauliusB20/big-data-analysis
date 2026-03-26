@@ -184,6 +184,42 @@ def worker_process(queue, results_queue, worker_id, mode):
                     last_seen_gap[mmsi] = {"time": curr_t, "draft": curr_draft}
                 except (ValueError, IndexError):
                     continue
+        elif mode == "teleport": #Detecting teleportation
+            for row in chunk:
+                try:
+                    mmsi = row[IDX_MMSI].strip() #TAKE MMSI
+                    curr_t = parse_time(row[IDX_TIMESTAMP]) #Take current time
+                    curr_lat, curr_lon = float(row[IDX_LAT]), float(row[IDX_LON]) #Take current location
+
+                    if mmsi in last_seen_gap:
+                        prev = last_seen_gap[mmsi]
+
+                        if curr_t > prev["time"]:
+                            tdelta_sec = (curr_t - prev["time"]).total_seconds()
+
+                            #Avoid division by 0
+                            if tdelta_sec > 0:
+                                dist_meters = haversine(prev["lat"], prev["lon"], curr_lat, curr_lon)
+
+                                #Calculate the speed in knots
+                                implied_knots = (dist_meters / tdelta_sec) * 1.94384
+
+                                if implied_knots > 60.0:
+                                    print(
+                                        f"  [TELEPORT] MMSI: {mmsi} | Implied Speed: {round(implied_knots, 1)} knots!")
+                                    results_queue.put({
+                                        "type": "TELEPORTATION",
+                                        "mmsi": mmsi,
+                                        "speed_knots": round(implied_knots, 2),
+                                        "dist_km": round(dist_meters / 1000, 2),
+                                        "seconds": tdelta_sec
+                                    })
+
+                    # Update the state with the current position/time
+                    last_seen_gap[mmsi] = {"time": curr_t, "lat": curr_lat, "lon": curr_lon}
+                except:
+                    continue
+
 
 
 
@@ -219,7 +255,7 @@ def stream_partition(file_path, mode):
             if total_rows_read % 100000 == 0:
                 print(f"[Main] Rows distributed: {total_rows_read}...")
 
-            if mode == "gap" or mode == "draft":
+            if mode == "gap" or mode == "draft" or mode == "teleport":
                 worker_id = int(row[IDX_MMSI]) % N_WORKERS
             else:
                 grid_key = f"{round(float(row[IDX_LAT]), 1)}_{round(float(row[IDX_LON]), 1)}"
@@ -244,7 +280,7 @@ def stream_partition(file_path, mode):
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
     FILE = "aisdk-2025-02-28.csv"
-    RUN_MODE = "draft"  # Set to "gap" , "loitering",draft
+    RUN_MODE = "teleport"  # Set to "gap" , "loitering",draft
 
     start_time = time.time()
     results = stream_partition(FILE, mode=RUN_MODE)
