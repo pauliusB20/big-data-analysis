@@ -2,201 +2,219 @@ import multiprocessing as mp
 import csv
 import math
 from datetime import datetime
+import zlib
 from collections import defaultdict
+import time
+import resource
 
+# --- CONFIGURATION ---
 N_WORKERS = 4
-CHUNK_SIZE = 10000
-
 INVALID_MMSI = {"000000000", "111111111", "123456789"}
+
+# Analysis Thresholds
+MIN_ENCOUNTER_DURATION_SEC = 7200  # 2 hours
+MAX_TIME_DIFF_SECONDS = 3600  # 1 hour
+GAP_TIME_THRESHOLD_MIN = 240  # 4 hours
+GAP_DIST_THRESHOLD_KM = 1.0  # 1 kilometer
+
+# Index Mapping
+IDX_TIMESTAMP = 0
+IDX_MMSI = 2
+IDX_LAT = 3
+IDX_LON = 4
+IDX_SOG = 7
 
 
 def haversine(lat1, lon1, lat2, lon2):
-
     R = 6371000
-
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
     dlambda = math.radians(lon2 - lon1)
+    a = (math.sin(dphi / 2) ** 2 +
+         math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2)
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-    a = (
-        math.sin(dphi/2)**2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda/2)**2
-    )
-
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
 def parse_time(ts_str):
-    # Adjust format to your dataset, e.g., "YYYY-MM-DD HH:MM:SS"
-    return datetime.strptime(ts_str, "%d/%m/%Y %H:%M:%S")
-
-
-
-def check_for_gap(prev_data, current_time, current_lat, current_lon):
-    """
-    Analyzes two points in time for a specific vessel.
-    Returns a result dictionary if a gap is found, otherwise None.
-    """
-    # Guard: Don't process out-of-order data
-    if current_time <= prev_data["time"]:
-        return None
-
-    # 1. Calculate Time Gap
-    tdelta = (current_time - prev_data["time"]).total_seconds()
-    gap_minutes = tdelta / 60
-
-    # 2. Calculate Distance
-    dist_meters = haversine(
-        prev_data["lat"], prev_data["lon"],
-        current_lat, current_lon
-    )
-    dist_km = dist_meters / 1000
-
-    # 3. Decision: 4 hours AND 1 kilometer
-    if gap_minutes >= 240 and dist_km > 1:
-        return {
-            "gap_hours": round(gap_minutes / 60, 2),
-            "distance_km": round(dist_km, 2),
-            "start_time": prev_data["time"],
-            "end_time": current_time
-        }
-
-    return None
-
-
-
-
-def worker_process(queue,results_queue, worker_id):
-    """
-    This function runs ONCE per worker.
-    The dictionary 'last_seen' stays in memory until the script ends.
-    """
-    # MEMORY: This persists across all chunks sent to this worker
-    last_seen = {}
-
-    while True:
-        # Wait for a new chunk of data
-        chunk = queue.get()
-
-        # If we receive None, it means there is no more data
-        if chunk is None:
-            break
-
-        for row in chunk:
-            try:
-                mmsi = row[2].strip()
-                current_time = parse_time(row[0])
-                current_lat = float(row[3])
-                current_lon = float(row[4])
-
-                if mmsi in last_seen:
-                    # CALL THE EXTERNAL LOGIC FUNCTION
-                    gap_report = check_for_gap(
-                        last_seen[mmsi],
-                        current_time,
-                        current_lat,
-                        current_lon
-                    )
-
-                    if gap_report:
-                        # Add identifying info to the report before sending
-                        gap_report["mmsi"] = mmsi
-                        print(f"[Worker {worker_id}] Found Gap: {mmsi}")
-                        results_queue.put(gap_report)
-
-                # UPDATE STATE: Only if this is the newest data
-                if mmsi not in last_seen or current_time > last_seen[mmsi]["time"]:
-                    last_seen[mmsi] = {
-                        "time": current_time,
-                        "lat": current_lat,
-                        "lon": current_lon
-                    }
-
-
-
-            except Exception:
-                continue
-
+    return datetime.strptime(ts_str.strip(), "%d/%m/%Y %H:%M:%S")
 
 
 def is_valid_row(row):
-    """
-    Returns True if row passes basic validation.
-    This is the producer-side filtering to prevent skew.
-    """
     try:
-        mmsi = row[2].strip()
-        if mmsi in INVALID_MMSI or not mmsi.isdigit() or len(mmsi) != 9:
-            return False
-
-        lat = float(row[3])
-        lon = float(row[4])
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            return False
-
-        # Can add more checks (speed, timestamp, etc.)
+        if len(row) < 8: return False
+        mmsi = row[IDX_MMSI].strip()
+        if mmsi in INVALID_MMSI or not mmsi.isdigit(): return False
+        float(row[IDX_LAT]), float(row[IDX_LON]), float(row[IDX_SOG])
         return True
-    except Exception:
+    except:
         return False
 
 
-def stream_partition(file_path):
-    N_WORKERS = 4
-    # Create one communication channel (Queue) per worker
-    queues = [mp.Queue(maxsize=10) for _ in range(N_WORKERS)]
-    results_queue = mp.Queue()
-    processes = []
+def worker_process(queue, results_queue, worker_id, mode):
+    vessel_tracks = defaultdict(list)
+    active_encounters = {}
+    last_seen_gap = {}
+    chunk_count = 0
+    total_processed = 0
 
-    # Start the persistent workers
+    print(f"[Worker {worker_id}] Initialized in '{mode}' mode.")
+
+    while True:
+        chunk = queue.get() #Recieve data from the queue
+        if chunk is None: #If there is no more data shut the process down.
+            print(
+                f"[Worker {worker_id}] Received shutdown signal. Final ship count: {len(vessel_tracks) if mode == 'loitering' else len(last_seen_gap)}")
+            break
+
+        chunk_count += 1
+        total_processed += len(chunk)
+
+        # Heartbeat every 10 chunks
+        if chunk_count % 10 == 0:
+            print(
+                f"[Worker {worker_id}] Processed {total_processed} rows. Tracking {len(vessel_tracks) if mode == 'loitering' else len(last_seen_gap)} vessels.")
+
+        if mode == "gap": #Calculating the gap
+            for row in chunk:
+                try:
+                    mmsi = row[IDX_MMSI].strip() ##MMSI
+                    curr_t = parse_time(row[IDX_TIMESTAMP]) #Current time
+                    curr_lat, curr_lon = float(row[IDX_LAT]), float(row[IDX_LON])#Current position
+
+                    if mmsi in last_seen_gap:
+                        prev = last_seen_gap[mmsi] #Previous location of MMSI
+                        if curr_t > prev["time"]:
+                            tdelta = (curr_t - prev["time"]).total_seconds() #Calculate the time between instances
+                            if tdelta >= (GAP_TIME_THRESHOLD_MIN * 60):
+                                dist = haversine(prev["lat"], prev["lon"], curr_lat, curr_lon) #See if distance os not 0
+                                if (dist / 1000) > GAP_DIST_THRESHOLD_KM:
+                                    print(
+                                        f"  [GAP DETECTED] Worker {worker_id} | MMSI: {mmsi} | {round(tdelta / 3600, 1)} hrs")
+                                    results_queue.put({
+                                        "type": "GAP", "mmsi": mmsi,
+                                        "gap_hours": round(tdelta / 3600, 2),
+                                        "dist_km": round(dist / 1000, 2),
+                                        "start": prev["time"], "end": curr_t
+                                    }) #Put the data into multiprocesser
+                    last_seen_gap[mmsi] = {"time": curr_t, "lat": curr_lat, "lon": curr_lon} #Update the list
+                except:
+                    continue
+
+        elif mode == "loitering": #Detecting loitering
+            for row in chunk: #Iterate through each row and get data
+                try:
+                    mmsi = row[IDX_MMSI].strip()
+                    dt = parse_time(row[IDX_TIMESTAMP])
+                    lat, lon, sog = float(row[IDX_LAT]), float(row[IDX_LON]), float(row[IDX_SOG])
+                    vessel_tracks[mmsi].append({"time": dt, "lat": lat, "lon": lon, "sog": sog})
+                except:
+                    continue
+
+            mmsis = list(vessel_tracks.keys()) #All the unique ships in this chunk
+            for i in range(len(mmsis)):
+                for j in range(i + 1, len(mmsis)):
+                    m1, m2 = mmsis[i], mmsis[j] #Take a pair of vessels
+                    p1, p2 = vessel_tracks[m1][-1], vessel_tracks[m2][-1] #Take the last position of the vessels
+
+                    if abs((p1['time'] - p2['time']).total_seconds()) > MAX_TIME_DIFF_SECONDS: #If the difference is more than 1 hours we can ignore the ships
+                        continue
+
+                    if p1['sog'] < 2.0 and p2['sog'] < 2.0: #Check the ships speed
+                        dist = haversine(p1['lat'], p1['lon'], p2['lat'], p2['lon'])
+                        if dist <= 500: #Check their distance
+                            pair = tuple(sorted([m1, m2]))
+                            if pair not in active_encounters:
+                                print(f"    [*] Potential Encounter Started: {m1} & {m2} (Worker {worker_id})")
+                                active_encounters[pair] = {"start": p1['time'], "reported": False} #Start tracking the ship
+                            else:
+                                duration = (p1['time'] - active_encounters[pair]["start"]).total_seconds() #Check how long they have been together
+                                if duration >= MIN_ENCOUNTER_DURATION_SEC and not active_encounters[pair]["reported"]:
+                                    print(
+                                        f"    [!!!] TARGET ENCOUNTER: {m1} & {m2} (Duration: {round(duration / 3600, 1)}h)")
+                                    results_queue.put({
+                                        "type": "ENCOUNTER", "mmsi_a": pair[0], "mmsi_b": pair[1],
+                                        "duration_hrs": round(duration / 3600, 2), "lat": p1['lat']
+                                    }) #Print the loitering event
+                                    active_encounters[pair]["reported"] = True
+                        else:
+                            active_encounters.pop(tuple(sorted([m1, m2])), None) #If they are moving away we can remove them
+            #Delete the previous data points for a ship
+            for m in mmsis:
+                vessel_tracks[m] = vessel_tracks[m][-1:]
+
+
+def stream_partition(file_path, mode):
+    final_list = []
+    queues = [mp.Queue(maxsize=50) for _ in range(N_WORKERS)]
+    results_queue = mp.Queue()
+    total_rows_read = 0
+
+    def drain():
+        while not results_queue.empty():
+            try:
+                final_list.append(results_queue.get_nowait())
+            except:
+                break
+
+    processes = []
     for i in range(N_WORKERS):
-        p = mp.Process(target=worker_process, args=(queues[i],results_queue, i))
+        p = mp.Process(target=worker_process, args=(queues[i], results_queue, i, mode))
         p.start()
         processes.append(p)
 
-    with open(file_path, "r") as f:
+    print(f"[Main] Reading file: {file_path}")
+    with open(file_path, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
-        next(reader)  # Skip header
-
+        header = next(reader)
         buffers = [[] for _ in range(N_WORKERS)]
 
         for row in reader:
-            if not is_valid_row(row):
-                print("Value is not valid")
-                continue
-            try:
-                # Use the MMSI to route to the correct worker
-                mmsi_val = int(row[2])
-                worker_id = mmsi_val % N_WORKERS
+            if not is_valid_row(row): continue
+            total_rows_read += 1
 
-                buffers[worker_id].append(row)
+            if total_rows_read % 100000 == 0:
+                print(f"[Main] Rows distributed: {total_rows_read}...")
 
-                # Send a 'chunk' once a buffer hits 5000 rows
-                if len(buffers[worker_id]) >= 5000:
-                    print("Executing the worker")
-                    queues[worker_id].put(buffers[worker_id])
-                    buffers[worker_id] = []
-            except:
-                continue
+            if mode == "gap":
+                worker_id = int(row[IDX_MMSI]) % N_WORKERS
+            else:
+                grid_key = f"{round(float(row[IDX_LAT]), 1)}_{round(float(row[IDX_LON]), 1)}"
+                worker_id = zlib.adler32(grid_key.encode()) % N_WORKERS
 
-    # Final cleanup: send remaining data and shutdown signal
+            buffers[worker_id].append(row)
+            if len(buffers[worker_id]) >= 5000:
+                queues[worker_id].put(buffers[worker_id])
+                buffers[worker_id] = []
+                drain()
+
+    print(f"[Main] End of file reached. Flushing remaining buffers...")
     for i in range(N_WORKERS):
-        if buffers[i]:
-            queues[i].put(buffers[i])
-        queues[i].put(None)  # The 'None' tells the while loop to break
+        if buffers[i]: queues[i].put(buffers[i])
+        queues[i].put(None)
 
-    for p in processes:
-        p.join()
-    final_list = []
-    while not results_queue.empty():
-        final_list.append(results_queue.get())
-
-    return final_list  # Now it returns a standard Python list
+    for p in processes: p.join()
+    drain()
+    return final_list
 
 
 if __name__ == "__main__":
-    mp.set_start_method("fork",force=True)
-    dark_periods=stream_partition("aisdk-2025-02-28.csv")
+    mp.set_start_method("fork", force=True)
+    FILE = "aisdk-2025-02-28.csv"
+    RUN_MODE = "gap"  # Set to "gap" or "loitering"
 
+    start_time = time.time()
+    results = stream_partition(FILE, mode=RUN_MODE)
+    total_time = time.time() - start_time
 
-dark_periods
+    print(f"\n--- {RUN_MODE.upper()} ANALYSIS COMPLETE ---")
+    print(f"Time elapsed: {round(total_time, 2)} seconds")
+    print(f"Total events detected: {len(results)}")
+
+    peak_memory = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+
+    if hasattr(resource, 'linux_distribution'):
+        peak_gb = peak_memory / (1024 * 1024)
+    else:
+        peak_gb = peak_memory / (1024 * 1024 * 1024)
+
+    print(f"Peak Memory Usage: {round(peak_gb, 2)} GB")
