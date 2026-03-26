@@ -23,6 +23,7 @@ IDX_MMSI = 2
 IDX_LAT = 3
 IDX_LON = 4
 IDX_SOG = 7
+IDX_DRAFT=18
 
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -141,6 +142,49 @@ def worker_process(queue, results_queue, worker_id, mode):
             #Delete the previous data points for a ship
             for m in mmsis:
                 vessel_tracks[m] = vessel_tracks[m][-1:]
+        elif mode == "draft":  # Detecting draft
+            for row in chunk:
+                try:
+                    mmsi = row[IDX_MMSI].strip() #Getting MMSI
+                    curr_t = parse_time(row[IDX_TIMESTAMP]) #Getting current time
+
+                    val = row[IDX_DRAFT].strip() #Get draft
+
+                    if not val: continue
+
+                    curr_draft = float(val) #Current draft
+
+                    if mmsi in last_seen_gap:
+                        prev = last_seen_gap[mmsi] #Update the previous value with the new one
+
+                        #Only compare if the row is newer
+                        if curr_t > prev["time"]:
+                            tdelta = (curr_t - prev["time"]).total_seconds() #Look at black out
+
+
+                            if tdelta > 7200:
+                                #Check if drought changed by 5%
+                                if prev["draft"] > 0:
+                                    change_amount = abs(curr_draft - prev["draft"])
+                                    percent_change = (change_amount / prev["draft"]) * 100
+
+                                    if percent_change > 5.0:
+                                        print(
+                                            f"  [DRAFT ANOMALY] MMSI: {mmsi} | Change: {round(percent_change, 2)}% | Gap: {round(tdelta / 3600, 1)}h")
+                                        results_queue.put({
+                                            "type": "DRAFT_ANOMALY",
+                                            "mmsi": mmsi,
+                                            "old_draft": prev["draft"],
+                                            "new_draft": curr_draft,
+                                            "percent": round(percent_change, 2),
+                                            "gap_hrs": round(tdelta / 3600, 2)
+                                        })
+
+                    # Update state for this ship
+                    last_seen_gap[mmsi] = {"time": curr_t, "draft": curr_draft}
+                except (ValueError, IndexError):
+                    continue
+
 
 
 def stream_partition(file_path, mode):
@@ -175,7 +219,7 @@ def stream_partition(file_path, mode):
             if total_rows_read % 100000 == 0:
                 print(f"[Main] Rows distributed: {total_rows_read}...")
 
-            if mode == "gap":
+            if mode == "gap" or mode == "draft":
                 worker_id = int(row[IDX_MMSI]) % N_WORKERS
             else:
                 grid_key = f"{round(float(row[IDX_LAT]), 1)}_{round(float(row[IDX_LON]), 1)}"
@@ -200,7 +244,7 @@ def stream_partition(file_path, mode):
 if __name__ == "__main__":
     mp.set_start_method("fork", force=True)
     FILE = "aisdk-2025-02-28.csv"
-    RUN_MODE = "gap"  # Set to "gap" or "loitering"
+    RUN_MODE = "draft"  # Set to "gap" , "loitering",draft
 
     start_time = time.time()
     results = stream_partition(FILE, mode=RUN_MODE)
@@ -218,3 +262,4 @@ if __name__ == "__main__":
         peak_gb = peak_memory / (1024 * 1024 * 1024)
 
     print(f"Peak Memory Usage: {round(peak_gb, 2)} GB")
+
