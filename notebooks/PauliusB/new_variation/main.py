@@ -8,18 +8,16 @@ from collections import deque
 from typing import Any
 from tqdm import tqdm
 import numpy as np
-import json
 import csv
 import os
 import heapq
+import uuid
 
 # TODO: 
 # Spotted anomaly dark 118. Now check with loitering (B). Later (C), (D)
 # Export all data to result.csv file
 # Do profiling on data
 
-# Profile
-# https://github.com/bloomberg/memray
 
 FILE_CSV = "aisdk-2025-02-28.csv"
 # FILE_CSV = "aisdk-2025-03-01.csv"
@@ -32,7 +30,7 @@ SUB_CHUNK_SIZE = 100
 # After which count, display log message
 FINISHED_TASKS = 10000
 
-FINISHED_TEMP_TASKS = 100
+FINISHED_TEMP_TASKS = 1000
 
 # Max tasks workers can proccess
 TASKS_PER_WORKER = 10
@@ -44,12 +42,21 @@ WORKERS = 6
 # For anomaly A, 4 hours in seconds
 TIME_THRESHOLD = 14400
 
+# For anomaly C, 2 hours in seconds
+TIME_THRESHOLD_C = 7200
+
+TIME_THRESHOLD_D = 7200
+
 TEMP_CSV_FILE = "temp.csv"
-ANOMALY_A_TEMP_FILE = "anomaly_temp.csv"
+ANOMALY_A_TEMP_FILE = "anomaly_temp_a.csv"
+ANOMALY_C_TEMP_FILE = "anomaly_temp_c.csv"
+ANOMALY_D_TEMP_FILE = "anomaly_temp_d.csv"
 # TEMP_CSV_FILE = "temp"
 
-CALCULATE_A = False
+CALCULATE_A = True
 CALCULATE_B = True
+CALCULATE_C = True
+CALCULATE_D = True
 EXPORT_FILE = True
 
 TEMP_FILE_AMOUNT = 3
@@ -67,7 +74,8 @@ ShipRow = namedtuple("ShipRow",
         "timestamp",
         "latitude",
         "longitude",
-        "sog"
+        "sog",
+        "draught"
     ])
 
 
@@ -97,6 +105,7 @@ def _read_chunks(file_path: str, chunk_size: int) -> Iterable[dict]:
         longitude_idx = headline.index("Longitude")
         latitude_idx = headline.index("Latitude")
         sog_idx = headline.index("SOG")
+        draught_idx = headline.index("Draught")
         
         chunk = set()
         for row in reader:  
@@ -120,6 +129,11 @@ def _read_chunks(file_path: str, chunk_size: int) -> Iterable[dict]:
                     continue
                 
                 sog = float(sog)
+                draught = row[draught_idx]
+                if not draught:
+                    continue
+                
+                draught = float(draught)
                 
                 chunk.add(
                         ShipRow(
@@ -127,7 +141,8 @@ def _read_chunks(file_path: str, chunk_size: int) -> Iterable[dict]:
                             row[timestamp_idx],
                             latitude,
                             longitude,
-                            sog
+                            sog,
+                            draught
                         )
                     ) 
             if len(chunk) >= chunk_size:
@@ -172,15 +187,24 @@ def _read_ship_data(chunk_size: int = 0) -> Iterable[list]:
     if chunk:
         yield chunk    
 
-def _read_ship_data_anomaly_a(chunk_sizes: dict[int]) -> Iterable[list]:
+def _read_ship_data_anomaly(chunk_sizes: dict[int], file: str) -> Iterable[list]:
     chunk = []
-    with open(ANOMALY_A_TEMP_FILE, "r") as file:
+    with open(file, "r") as file:
         csv_reader = csv.reader(file)
         for row in csv_reader:
             if len(chunk) >= chunk_sizes[row[0]]:
                 yield chunk
                 chunk = []            
-            chunk.append(row)
+            chunk.append(
+                ShipRow(
+                   row[0],
+                   datetime.strptime(row[1], "%Y-%m-%d %H:%M:%S"),
+                   float(row[2]),
+                   float(row[3]),
+                   float(row[4]),
+                   float(row[5])
+                )
+            )
     
     if chunk:
         yield chunk       
@@ -203,57 +227,50 @@ def process_ordered_chunks(chunk: list[list]) -> dict[str, list]:
     result = defaultdict(list)
     pid = os.getpid()
     
-    for (mmsi, timestamp, latitude, longitude, sog) in chunk:
+    for (
+        mmsi, 
+        timestamp, 
+        latitude, 
+        longitude, 
+        sog, 
+        draught
+    ) in chunk:
         result[mmsi].append(
             ShipRow(
                 mmsi,
                 datetime.strptime(timestamp, "%d/%m/%Y %H:%M:%S"),
                 float(latitude),
                 float(longitude),
-                float(sog)
+                float(sog),
+                float(draught)
             )
         )
     
     return pid, result
 
-def process_ship_chunk_anomalies(chunk: list[list]) -> dict:    
-    anomaly_mmsi = 0
+def process_ship_chunk_anomalies_a(chunk: list[list]) -> dict:    
+    anomaly_count = 0
     
     # anomaly counting
     for i in range(1, len(chunk)):
-        (
-            _,
-            ship_time_previous,
-            ship_latitude_previous,
-            ship_longitude_previous,
-            _
-        ) = chunk[i - 1]
+        row_previous = chunk[i - 1]
+        row = chunk[i]
+        if row_previous.mmsi != row.mmsi:
+            continue
         
         point_previous = _get_coord(
-            ship_latitude_previous, 
-            ship_longitude_previous
-        )
-        if not point_previous:
-            continue
-        
-        (
-            anomaly_mmsi,
-            ship_time_current,
-            ship_latitude_current,
-            ship_longitude_current,
-            _
-        ) = chunk[i]
+            row_previous.latitude,
+            row_previous.longitude
+        )      
         
         point_current = _get_coord(
-            ship_latitude_current, 
-            ship_longitude_current
+            row.latitude,
+            row.longitude
         )
-        if not point_current:
-            continue
         
         time_diff = _get_time_diff(
-            datetime.strptime(ship_time_previous, "%d/%m/%Y %H:%M:%S"), 
-            datetime.strptime(ship_time_current, "%d/%m/%Y %H:%M:%S")
+            row_previous.timestamp, 
+            row.timestamp
         )
         
         is_anomaly = (
@@ -264,11 +281,87 @@ def process_ship_chunk_anomalies(chunk: list[list]) -> dict:
             ) > 1 and 
             time_diff > TIME_THRESHOLD
         )
-        anomaly_mmsi += int(is_anomaly)
+        anomaly_count += int(is_anomaly)
     
     pid = os.getpid()
     
-    return pid, anomaly_mmsi
+    return pid, anomaly_count
+
+def process_ship_chunk_anomalies_c(chunk: list[list]) -> tuple:    
+    anomaly_draught_count = 0
+    
+    # anomaly counting
+    for i in range(1, len(chunk)):
+        row_previous = chunk[i - 1]        
+        row = chunk[i]
+        
+        if row_previous.mmsi != row.mmsi:
+            continue
+        
+        time_diff = _get_time_diff(
+            row_previous.timestamp, 
+            row.timestamp
+        )       
+        
+        delta_draught = np.round(
+            (row.draught - row_previous.draught) / row_previous.draught, 
+            3
+        )
+        
+        is_anomaly = (
+            time_diff > TIME_THRESHOLD_C and
+            delta_draught > 0.05
+        )
+        anomaly_draught_count += int(is_anomaly)
+    
+    pid = os.getpid()
+    
+    return pid, anomaly_draught_count
+
+def process_ship_chunk_anomalies_d(chunk: list[list]) -> tuple:
+    stolen_id_count = 0
+
+     # anomaly counting
+    for i in range(1, len(chunk)):
+        row_previous = chunk[i - 1]        
+        row = chunk[i]
+        
+        if row_previous.mmsi != row.mmsi:
+            continue
+        
+        point_previous = _get_coord(
+            row_previous.latitude,
+            row_previous.longitude
+        )      
+        
+        point_current = _get_coord(
+            row.latitude,
+            row.longitude
+        )
+        
+        time_diff = _get_time_diff(
+            row_previous.timestamp, 
+            row.timestamp
+        )     
+        
+        distance =  haversine(
+            point_previous, 
+            point_current, 
+            Unit.KILOMETERS
+        )
+        
+        speed = distance / (time_diff / 3600)
+        
+        
+        is_anomaly = (
+            time_diff < TIME_THRESHOLD_D and
+            speed > 60
+        )
+        stolen_id_count += int(is_anomaly)
+    
+    pid = os.getpid()
+    
+    return pid, stolen_id_count
 
 def _perform_vacuum(temp_file: str) -> None:
     os.remove(temp_file)
@@ -330,6 +423,11 @@ def process_ship_chunk_pairs(chunk: list[list]) -> dict:
         )
     return pid, close_pairs
 
+def _temp_file_iterator(filename: str) -> Iterable[tuple]:
+    with open(filename, newline="") as temp_file:
+        for row in csv.reader(temp_file):
+            yield (int(row[0]), row)
+
 if __name__ == "__main__":    
     anomalies_total = 0
     loitering_total = 0
@@ -340,32 +438,57 @@ if __name__ == "__main__":
     ships_mapped = defaultdict(list)
     start_time = datetime.now()   
     
-    task_counts = defaultdict(list)
-    task_anomalies_ships = defaultdict(list)
+    
     task_loitered_ships = defaultdict(list)
     ship_counts = defaultdict(list)
     ship_pairs = []
     
+    used_file_names = []
     reader_cursor = _read_chunks(FILE_CSV, CHUNK_SIZE)
     with Pool(processes=WORKERS) as pool:
-        sorted_chunks = list(
-            pool.imap(
-                process_chunk_mapped, 
-                reader_cursor, 
-                chunksize=TASKS_PER_WORKER)
-            )
+        for chunk_received in pool.imap_unordered(
+            process_chunk_mapped, 
+            reader_cursor, 
+            chunksize=TASKS_PER_WORKER
+        ):
+            temp_file = f"{uuid.uuid4().hex}.csv"
+            with open(temp_file, "w") as file:
+                writer = csv.writer(file)
+                writer.writerows(chunk_received)
+            used_file_names.append(temp_file)
 
-    print("Merged to heap")
-    merged_result = heapq.merge(*sorted_chunks, key=lambda x: x.timestamp)
+
+    file_generators = [
+        _temp_file_iterator(used_file_name)
+        for used_file_name in used_file_names
+    ]
+
+    # print("Merged to heap")
+    merged_result = heapq.merge(*file_generators, key=lambda x: x[0])
     
     print("Exporting to temp csv file") 
     with open(TEMP_CSV_FILE, "w") as file:
         writer = csv.writer(file)
-        for row in merged_result:
+        for key, row in merged_result:
             writer.writerow(row)
-            
+    
+    # clear memory
+    del merged_result
+    
+    print("Removing temp files")     
+    for used_file in used_file_names:
+        _perform_vacuum(used_file)
+    
+    # clear memory
+    del used_file_names 
+          
     if CALCULATE_A:
+        print("Performing anomaly A analysis")
+        
+        task_counts = defaultdict(list)
         ships_mapped = defaultdict(list)
+        task_anomalies_ships = defaultdict(list)
+        
         print("Calculating anomaly A")
         ship_reader_cursor = _read_ship_data(chunk_size=CHUNK_SIZE//2)
         with Pool(processes=WORKERS//2) as pool:
@@ -378,14 +501,16 @@ if __name__ == "__main__":
             ):
               task_counts[pid] = task_counts.get(pid, 0) + 1
               if task_counts[pid] % FINISHED_TASKS == 0:
-                  timestamp = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+                  timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                   print(f"Proccess = {pid} Finished reading temp file {FINISHED_TASKS} at {timestamp}") 
 
               for mmsi, ships in mapped_ships.items():
                   ships_mapped[mmsi].extend(ships)
         
+        del task_counts
+        
         for mmsi, ships in ships_mapped.items():
-            ship_counts[mmsi].sort(key=lambda x: x.timestamp)
+            ships_mapped[mmsi].sort(key=lambda x: x.timestamp)
               
         print("Exporting data to anomaly A temp csv file")
         exported_ship_counts = defaultdict(int)
@@ -395,14 +520,18 @@ if __name__ == "__main__":
                 writer.writerows(ship_records)
                 exported_ship_counts[mmsi] = len(ship_records)
         
-        reader_cursor = _read_ship_data_anomaly_a(
-            exported_ship_counts
+        # clear memory
+        del ships_mapped
+        
+        reader_cursor = _read_ship_data_anomaly(
+            exported_ship_counts,
+            ANOMALY_A_TEMP_FILE
         )
         
         print("Reading from temp file and calculating anomaly A")
         with Pool(processes=WORKERS//2) as pool:
             for pid, anomalies in tqdm(
-                pool.imap(process_ship_chunk_anomalies, reader_cursor, chunksize=3),
+                pool.imap(process_ship_chunk_anomalies_a, reader_cursor, chunksize=3),
                 desc="Processing file chunks"
             ):
                 task_anomalies_ships[pid] = task_anomalies_ships.get(pid, 0) + 1
@@ -410,16 +539,23 @@ if __name__ == "__main__":
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     print(f"Proccess = {pid} Finished proccesing {FINISHED_TASKS} at {timestamp}")                
                 
-                anomalies_total += anomalies
+                anomalies_total_a += anomalies
+        
+        del task_anomalies_ships
+        del exported_ship_counts
+        
+        print(f"Result A) Total anomaly ships: {anomalies_total_a}")
         
     # TODO: optimize
     if CALCULATE_B:
+        print("Performing anomaly B analysis")
+        
         ship_pairs = defaultdict(dict)
         print("Reading ship data from temp file for loitering calculation") 
         ship_reader_cursor = _read_ship_data(chunk_size=CHUNK_SIZE) 
         with Pool(processes=WORKERS) as pool:
             for pid, pair_mappings in tqdm(
-                pool.imap(process_ship_chunk_pairs, ship_reader_cursor, chunksize=10),
+                pool.imap(process_ship_chunk_pairs, ship_reader_cursor, chunksize=15),
                 desc="Processing file chunks ship loitering"
             ):
                 task_loitered_ships[pid] = task_loitered_ships.get(pid, 0) + 1
@@ -427,22 +563,143 @@ if __name__ == "__main__":
                     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     print(f"Proccess = {pid} Finished loitering proccesing {FINISHED_TEMP_TASKS} at {timestamp}")   
                     
-                for pair, timestamps in pair_mappings:
-                    ship_pairs[pair] = timestamps
+                for pair in pair_mappings:
+                    ship_pairs[pair] = pair_mappings[pair]
         
         print("Calculating loitering anomalies")
-        for coord, pair_time in ship_pairs.items():
+        for pair in ship_pairs:
+            pair_time = ship_pairs[pair]
             if (pair_time["last"] - pair_time["start"]).total_seconds() >= MIN_DURATION:
                 loitering_total += 1
+        
+        del ship_pairs 
+        print(f"Result B) Loitering ships: {loitering_total}")
+        
+    if CALCULATE_C:
+        ship_reader_cursor = _read_ship_data(chunk_size=CHUNK_SIZE//2)
+        task_counts = defaultdict(list)
+        ships_mapped = defaultdict(list)
+        task_anomalies_ships = defaultdict(list)
+        anomalies_total_c = 0
+        
+        print("Performing anomaly C calculation")
+        
+        with Pool(processes=WORKERS//2) as pool:
+            for pid, mapped_ships in tqdm(
+                pool.imap(
+                   process_ordered_chunks, 
+                   ship_reader_cursor, 
+                   chunksize=2
+                ) 
+            ):
+              task_counts[pid] = task_counts.get(pid, 0) + 1
+              if task_counts[pid] % FINISHED_TASKS == 0:
+                  timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                  print(f"(Anomaly C) Proccess = {pid} Finished reading temp file {FINISHED_TASKS} at {timestamp}") 
+
+              for mmsi, ships in mapped_ships.items():
+                  ships_mapped[mmsi].extend(ships)
+                  
+        del task_counts
+        
+        print("Exporting data to anomaly C temp csv file")
+        exported_ship_counts = defaultdict(int)
+        with open(ANOMALY_C_TEMP_FILE, "w") as file:
+            writer = csv.writer(file)
+            for mmsi, ship_records in ships_mapped.items():
+                writer.writerows(ship_records)
+                exported_ship_counts[mmsi] = len(ship_records)
+        
+        
+        del ships_mapped
+        reader_cursor = _read_ship_data_anomaly(
+            exported_ship_counts,
+            ANOMALY_C_TEMP_FILE
+        )
+        
+        print("Reading from temp file and calculating anomaly C")
+        with Pool(processes=WORKERS//2) as pool:
+            for pid, anomalies in tqdm(
+                pool.imap(process_ship_chunk_anomalies_c, reader_cursor, chunksize=3),
+                desc="(Anomaly C) Processing file chunks"
+            ):
+                task_anomalies_ships[pid] = task_anomalies_ships.get(pid, 0) + 1
+                if task_anomalies_ships[pid] % FINISHED_TASKS == 0:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    print(f"Proccess = {pid} Finished proccesing {FINISHED_TASKS} at {timestamp}")                
                 
+                anomalies_total_c += anomalies
+        
+        del task_anomalies_ships
+        del exported_ship_counts
+        
+        print(f"Result C) Total anomaly ships: {anomalies_total_c}")
     
-    print("Results")
-    print(f"A) anomaly_total: {anomalies_total}")
-    print(f"B) loitering: {loitering_total}")
+    if CALCULATE_D:
+        ship_reader_cursor = _read_ship_data(chunk_size=CHUNK_SIZE//2)
+        task_counts = defaultdict(list)
+        ships_mapped = defaultdict(list)
+        task_anomalies_ships = defaultdict(list)
+        anomalies_total_d = 0
+        
+        print("Performing anomaly D calculation")
     
+        with Pool(processes=WORKERS//2) as pool:
+            for pid, mapped_ships in tqdm(
+                pool.imap(
+                   process_ordered_chunks, 
+                   ship_reader_cursor, 
+                   chunksize=2
+                ) 
+            ):
+              task_counts[pid] = task_counts.get(pid, 0) + 1
+              if task_counts[pid] % FINISHED_TASKS == 0:
+                  timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                  print(f"(Anomaly D) Proccess = {pid} Finished reading temp file {FINISHED_TASKS} at {timestamp}") 
+
+              for mmsi, ships in mapped_ships.items():
+                  ships_mapped[mmsi].extend(ships)
+                  
+        del task_counts
     
+        print("Exporting data to anomaly D temp csv file")
+        exported_ship_counts = defaultdict(int)
+        with open(ANOMALY_C_TEMP_FILE, "w") as file:
+            writer = csv.writer(file)
+            for mmsi, ship_records in ships_mapped.items():
+                writer.writerows(ship_records)
+                exported_ship_counts[mmsi] = len(ship_records)
+        
+        
+        del ships_mapped
+        reader_cursor = _read_ship_data_anomaly(
+            exported_ship_counts,
+            ANOMALY_D_TEMP_FILE
+        )
+        
+        print("Reading from temp file and calculating anomaly D")
+        with Pool(processes=WORKERS//2) as pool:
+            for pid, anomalies in tqdm(
+                pool.imap(process_ship_chunk_anomalies_d, reader_cursor, chunksize=3),
+                desc="(Anomaly D) Processing file chunks"
+            ):
+                task_anomalies_ships[pid] = task_anomalies_ships.get(pid, 0) + 1
+                if task_anomalies_ships[pid] % FINISHED_TASKS == 0:
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    print(f"(Anomaly D) Proccess = {pid} Finished proccesing {FINISHED_TASKS} at {timestamp}")                
+                
+                anomalies_total_d += anomalies
+        
+        del task_anomalies_ships
+        del exported_ship_counts
+        
+        print(f"Result D) Total anomaly ships: {anomalies_total_d}")
+    
+    print("Removing temp files")    
     _perform_vacuum(TEMP_CSV_FILE)
-    _perform_vacuum(ANOMALY_A_TEMP_FILE)
+    # _perform_vacuum(ANOMALY_A_TEMP_FILE)
+    
+    
     end_time = datetime.now()
     execution_difference = (end_time - start_time).seconds
     
