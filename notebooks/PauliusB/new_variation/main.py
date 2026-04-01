@@ -53,9 +53,10 @@ ANOMALY_C_TEMP_FILE = "anomaly_temp_c.csv"
 ANOMALY_D_TEMP_FILE = "anomaly_temp_d.csv"
 # TEMP_CSV_FILE = "temp"
 
-CALCULATE_A = True
-CALCULATE_B = True
-CALCULATE_C = True
+# DEBUG
+CALCULATE_A = False
+CALCULATE_B = False
+CALCULATE_C = False
 CALCULATE_D = True
 EXPORT_FILE = True
 
@@ -194,7 +195,8 @@ def _read_ship_data_anomaly(chunk_sizes: dict[int], file: str) -> Iterable[list]
         for row in csv_reader:
             if len(chunk) >= chunk_sizes[row[0]]:
                 yield chunk
-                chunk = []            
+                chunk = []
+                            
             chunk.append(
                 ShipRow(
                    row[0],
@@ -213,11 +215,6 @@ def _read_ship_data_anomaly(chunk_sizes: dict[int], file: str) -> Iterable[list]
 def process_chunk_mapped(chunk: list[dict]) -> list:            
     result = []
     mapped_chunk = _get_mapped_chunk(chunk)
-    pid = os.getpid()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%d")
-    
-    # print(f"Task ID = {pid} completed, timestamp = {timestamp}")
-    
     for row in mapped_chunk.values():
         result.extend(row)
     
@@ -342,12 +339,14 @@ def process_ship_chunk_anomalies_d(chunk: list[list]) -> tuple:
         time_diff = _get_time_diff(
             row_previous.timestamp, 
             row.timestamp
-        )     
+        )  
+        if time_diff < 0.5:
+            continue   
         
         distance =  haversine(
             point_previous, 
             point_current, 
-            Unit.KILOMETERS
+            Unit.NAUTICAL_MILES
         )
         
         speed = distance / (time_diff / 3600)
@@ -362,6 +361,11 @@ def process_ship_chunk_anomalies_d(chunk: list[list]) -> tuple:
     pid = os.getpid()
     
     return pid, stolen_id_count
+
+# TODO: export results anomaly A, C, D to files.
+# And calculate based on formula all the dfsi scores. Formula in VLE. Pick one ship from exported result temp files
+def _calculate_dfsi_each_ship() -> None:
+    pass
 
 def _perform_vacuum(temp_file: str) -> None:
     os.remove(temp_file)
@@ -664,7 +668,7 @@ if __name__ == "__main__":
     
         print("Exporting data to anomaly D temp csv file")
         exported_ship_counts = defaultdict(int)
-        with open(ANOMALY_C_TEMP_FILE, "w") as file:
+        with open(ANOMALY_D_TEMP_FILE, "w") as file:
             writer = csv.writer(file)
             for mmsi, ship_records in ships_mapped.items():
                 writer.writerows(ship_records)
@@ -698,6 +702,7 @@ if __name__ == "__main__":
     print("Removing temp files")    
     _perform_vacuum(TEMP_CSV_FILE)
     # _perform_vacuum(ANOMALY_A_TEMP_FILE)
+    
     
     
     end_time = datetime.now()
