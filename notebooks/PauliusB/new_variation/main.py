@@ -6,8 +6,6 @@ from tqdm import tqdm
 import csv
 import os
 
-# TODO: 
-# Optimize
 
 FILE_CSV = "aisdk-2025-02-28.csv"
 
