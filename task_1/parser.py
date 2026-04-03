@@ -5,7 +5,7 @@ from dataclasses import astuple
 from sqlite3 import connect
 from datetime import datetime
 from config import Config
-from helper import FileReader
+from helper import FileReader, DBHelper
 import os
 
 class AISWorker:
@@ -15,10 +15,10 @@ class AISWorker:
     """
     
     @staticmethod
-    def write_to_db(chunk: list) -> None:
+    def write_to_db(db_name: str, chunk: list) -> None:
         config = Config()
         
-        with connect(config.DB_NAME) as connection:
+        with connect(db_name) as connection:
             cursor = connection.cursor()
             cursor.executemany(f"""
                 INSERT 
@@ -29,11 +29,10 @@ class AISWorker:
             connection.commit()
     
     @staticmethod
-    def _get_rows(chunk: list[Iterable]) -> dict:
+    def _get_rows(rows: list) -> dict:
         mapped_ships = defaultdict(list)
-        rows = []
         
-        for row in chunk:
+        for row in rows:
             mapped_ships[row.mmsi].append(row)
         
         for mmsi in mapped_ships:
@@ -41,14 +40,25 @@ class AISWorker:
         
         rows = []
         for ships in mapped_ships.values():
-            rows.extend(list(map(lambda x: astuple(x), ships)))
+            rows.extend(
+                list(
+                    map(lambda ship: ship._as_tuple(), ships)
+                )
+            )
             
         return rows
     
     @staticmethod
-    def process_file_chunk(chunk: list[Iterable]) -> int:
-        chunk_ordered = AISWorker._get_rows(chunk)        
-        AISWorker.write_to_db(chunk_ordered)
+    def process_file_chunk(chunk: dict) -> int:
+        file_name, chunk_rows = list(chunk.items())[0]
+        chunk_ordered = AISWorker._get_rows(chunk_rows) 
+        table_name = DBHelper._get_db_from_file_name(
+            file_name
+        )         
+        AISWorker.write_to_db(
+            db_name=table_name,
+            chunk=chunk_ordered
+        )
         pid = os.getpid()
         return pid
             
@@ -67,23 +77,31 @@ class AISParser:
         self.file_reader = file_reader
         self.workers = workers
         self.config = Config()
+        self.db_helper = DBHelper()
     
     def initialize_db_start(self) -> None:
-        with connect(self.config.DB_NAME) as connection:
-            cursor = connection.cursor()
-            cursor.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {self.config.DB_TABLE} (
-                    mmsi VARCHAR(100),
-                    timestamp DATETIME,
-                    longitude REAL,
-                    latitude REAL,
-                    sog REAL,
-                    draught REAL
+        
+        for file_name in self.config.CSV_FILE_SOURCE:
+            
+            # forming db table name from file name
+            db_table_name = self.db_helper \
+                ._get_db_from_file_name(file_name)
+                    
+            with connect(db_table_name) as connection:
+                cursor = connection.cursor()
+                cursor.execute(
+                    f"""
+                    CREATE TABLE IF NOT EXISTS {self.config.DB_TABLE} (
+                        mmsi VARCHAR(100),
+                        timestamp DATETIME,
+                        longitude REAL,
+                        latitude REAL,
+                        sog REAL,
+                        draught REAL
+                    )
+                    """
                 )
-                """
-            )
-            connection.commit()  
+                connection.commit()  
     
     def run(self):
         task_counts = 0
@@ -100,8 +118,13 @@ class AISParser:
                    print(f"Worker ID = {pid} finished at {timestamp}")
                 
 
-def run_parser(config: Config) -> None:
+def run_ais_parsers(config: Config) -> None:
+    print("Performing data collection from config source files")
+    
     for file_path in config.CSV_FILE_SOURCE:
+        
+        print(f"Collecting data from file: {file_path}")
+        
         file_reader = FileReader(
             file_path=file_path,
             chunk_size=config.CHUNK_SIZE

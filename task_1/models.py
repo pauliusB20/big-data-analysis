@@ -37,6 +37,17 @@ class ShipRow:
     def _is_valid_longitude(self, longitude: int) -> bool:
         return -180 < longitude < 180
     
+    def _as_tuple(self):
+        return (
+            self.mmsi,
+            self.timestamp,
+            self.latitude.item(),
+            self.longitude.item(),
+            self.sog.item(),
+            self.draught.item()
+        )
+    
+    # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
     def __post_init__(self) -> None:
        if not self._is_mmsi_valid(self.mmsi):
