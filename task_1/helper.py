@@ -151,7 +151,7 @@ class DBHelper:
                 yield [row for row in rows]
     
     @staticmethod       
-    def _write_records_to_db(db_name: str, records: list[tuple], table: str="AIS_DATA") -> bool:
+    def _write_records_to_db(db_name: str, records: list[tuple], table: str="AIS_TABLE") -> bool:
         """
         Writing records to SQLITE database
 
