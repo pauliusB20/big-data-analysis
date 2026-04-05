@@ -97,6 +97,9 @@ class DBHelper:
     def __init__(self):
         self.config = Config()
         
+    def _get_time_diff(self, datetime_a: datetime, datetime_b: datetime) -> int:
+        difference = (datetime_b - datetime_a).total_seconds() 
+        return int(difference)
         
     def _get_record_limit(self, db_name: str) -> int:
         """
@@ -147,7 +150,6 @@ class DBHelper:
                 if not rows:
                     break
 
-                # skip first column if needed
                 yield [row for row in rows]
     
     @staticmethod       
