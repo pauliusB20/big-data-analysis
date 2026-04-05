@@ -1,18 +1,17 @@
+import heapq
+import numpy as np
+from collections import namedtuple
 from multiprocessing import Pool
-from datetime import datetime
-from collections.abc import Iterable
-from collections import defaultdict
-from dataclasses import astuple
+from sqlite3 import connect
 from datetime import datetime
 from parser import run_ais_parsers
-# from haversine import haversine, Unit
-from collections import defaultdict
 from config import Config
 from helper import DBHelper
 from tqdm import tqdm
-import numpy as np
-import csv
-import os            
+
+_R_NM = np.float64(3440.065)
+_3600 = 3600.0
+ShipRow = namedtuple("ShipRow", ["mmsi", "ts", "lat", "lon", "sog", "draught"])
 
 
 
@@ -45,55 +44,199 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     pass
 
 
+
+
+
+def _haversine(lat1, lon1, lat2, lon2):
+    phi1 = np.radians(lat1)
+    phi2 = np.radians(lat2)
+    dphi = np.radians(lat2 - lat1)
+    dlam = np.radians(lon2 - lon1)
+    a = np.sin(dphi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlam / 2) ** 2
+    return float(2 * _R_NM * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
+
+
+def _iter_vessels(db_paths: list[str]):
+    conns, cursors = [], []
+
+    for path in db_paths:
+        conn = connect(f"file:{path}?mode=ro", uri=True)
+        conns.append(conn)
+        cursors.append(
+            conn.execute(
+                "SELECT mmsi, timestamp, latitude, longitude, sog, draught "
+                "FROM pings ORDER BY mmsi, timestamp"
+            )
+        )
+
+    heap = []
+    for idx, cur in enumerate(cursors):
+        row = cur.fetchone()
+        if row:
+            heapq.heappush(heap, (*row, idx))
+
+    current_mmsi = None
+    current_rows = []
+
+    def _flush(rows):
+        rows.sort(key=lambda r: r.ts)
+        kept = [rows[0]]
+
+        prev_ts = rows[0].ts
+        prev_lat = rows[0].lat
+        prev_lon = rows[0].lon
+
+        for r in rows[1:]:
+            if (r.ts - prev_ts) < 5:
+                continue
+            if r.lat == prev_lat and r.lon == prev_lon:
+                continue
+
+            kept.append(r)
+            prev_ts = r.ts
+            prev_lat = r.lat
+            prev_lon = r.lon
+
+        return kept
+
+    while heap:
+        *vals, idx = heapq.heappop(heap)
+        mmsi, ts, lat, lon, sog, draught = vals
+
+        if mmsi != current_mmsi:
+            if current_mmsi is not None and current_rows:
+                yield current_mmsi, _flush(current_rows)
+            current_mmsi = mmsi
+            current_rows = []
+
+        current_rows.append(ShipRow(mmsi, ts, lat, lon, sog, draught))
+
+        nxt = cursors[idx].fetchone()
+        if nxt:
+            heapq.heappush(heap, (*nxt, idx))
+
+    if current_mmsi is not None and current_rows:
+        yield current_mmsi, _flush(current_rows)
+
+    for conn in conns:
+        conn.close()
+
+
+def detect_anomaly_d(args: tuple) -> dict:
+    mmsi, history = args
+    config = Config()
+    d_list = []
+
+    for i in range(1, len(history)):
+        p1 = history[i - 1]
+        p2 = history[i]
+
+        t_h = (p2.ts - p1.ts) / _3600
+        if t_h <= 0:
+            continue
+
+        dist = _haversine(p1.lat, p1.lon, p2.lat, p2.lon)
+        speed = dist / t_h
+
+        if speed > config.CLONE_SPEED_KT:
+            d_list.append(
+                {
+                    "mmsi": mmsi,
+                    "implied_knots": round(speed, 1),
+                    "dist_nm": round(dist, 3),
+                    "spoofing_artifact": dist > config.CLONE_MAX_DIST_NM,
+                    "ts_start": p1.ts,
+                    "lat1": p1.lat,
+                    "lon1": p1.lon,
+                    "ts_end": p2.ts,
+                    "lat2": p2.lat,
+                    "lon2": p2.lon,
+                }
+            )
+
+    dfsi_row = None
+    if d_list:
+        real_clone = [x for x in d_list if not x["spoofing_artifact"]]
+        total_jump = sum(x["dist_nm"] for x in real_clone)
+
+        dfsi_row = {
+            "mmsi": mmsi,
+            "dfsi": round(total_jump * config.DFSI_W_JUMP, 3),
+            "total_jump_nm": round(total_jump, 3),
+            "clones": len(real_clone),
+            "artifacts_excluded": len(d_list) - len(real_clone),
+        }
+
+    return {"d": d_list, "dfsi": dfsi_row}
+
+
 def _run_anomaly_d_analysis(config: Config) -> None:
     """
     Anomaly D analysis
     """
-    
-    # TODO: Anomaly D detection
-    
-    pass
+    print("\nRunning Anomaly D — Identity Clone detection ...")
+    db_paths = [DBHelper._get_db_from_file_name(f) for f in config.CSV_FILE_SOURCE]
 
+    all_d = []
+    dfsi_results = []
 
+    with Pool(processes=config.WORKERS) as pool:
+        for result in tqdm(
+            pool.imap_unordered(
+                detect_anomaly_d,
+                _iter_vessels(db_paths),
+                chunksize=config.TASKS_PER_WORKER
+            ),
+            desc="Anomaly D – analysing vessels",
+            unit="vessel",
+        ):
+            all_d.extend(result["d"])
+            if result["dfsi"]:
+                dfsi_results.append(result["dfsi"])
 
+    dfsi_results.sort(key=lambda x: x["dfsi"], reverse=True)
+
+    print(f"  Anomaly D Identity Clone:  {len(all_d):>7,} events")
+    print(f"  Flagged vessels (DFSI > 0): {len(dfsi_results):>7,}")
+
+    print("\n  Top 10 suspects by DFSI:")
+    for vessel in dfsi_results[:10]:
+        print(
+            f"    {vessel['mmsi']}  "
+            f"DFSI={vessel['dfsi']}  "
+            f"jumps={vessel['clones']}  "
+            f"total_nm={vessel['total_jump_nm']}"
+        )
 
 
 def run_anomaly_analysis(config: Config) -> None:
-
     """
     Anomaly analysis
     """
-    
     _run_anomaly_a_analysis(config)
     _run_anomaly_b_analysis(config)
     _run_anomaly_c_analysis(config)
     _run_anomaly_d_analysis(config)
 
-    
-if __name__ == "__main__":    
-    
+
+if __name__ == "__main__":
     config = Config()
-    
+
     print("-----STARTING AIS DATA ANALYZER-----")
-    
+
     start_time = datetime.now()
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
-    print(
-        f"Started run time at: {start_time_str}"
-        "-------------------"
-    )
-    
+    print(f"Started run time at: {start_time_str}")
+    print("-------------------")
+
     run_ais_parsers(config)
-    
-    run_anomaly_analysis()
-    
-    
+    run_anomaly_analysis(config)
+
     end_time = datetime.now()
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     execution_time = (end_time - start_time).seconds
+
     print(f"Total execution time: {execution_time}s")
-    print(
-        "------------------\n"
-        f"Finished runtime at {end_time_str}"
-    )
+    print("------------------")
+    print(f"Finished runtime at {end_time_str}")
     print("DONE")
