@@ -60,7 +60,7 @@ class FileReader:
                     )
                     if (
                         not row[latitude_idx] or
-                        not row[latitude_idx] or 
+                        not row[longitude_idx] or 
                         not row[mmsi_idx] or
                         not row[sog_idx] or
                         not row[draught_idx]
