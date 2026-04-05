@@ -30,12 +30,13 @@ class ShipRow:
             and len(mmsi) == 9
             and len(set(mmsi)) > 1
         )
-    
+        
+    # Conservative coordinates for Baltic sea
     def _is_valid_latitude(self, latitude: int) -> bool:
-        return -90 < latitude < 90
+        return 50 < latitude < 70
 
     def _is_valid_longitude(self, longitude: int) -> bool:
-        return -180 < longitude < 180
+        return 5 < longitude < 35
     
     def _as_tuple(self):
         return (
