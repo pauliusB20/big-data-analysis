@@ -191,6 +191,7 @@ class DBHelper:
                 """,
                 records
             )
+            conn.commit()
         
         return True            
     
