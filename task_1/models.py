@@ -57,5 +57,5 @@ class ShipRow:
        if not self._is_valid_latitude(self.latitude):
            raise ValueError("Invalid latitude")
        
-       if not self._is_valid_latitude(self.longitude):
+       if not self._is_valid_longitude(self.longitude):
            raise ValueError("Invalid longitude")
