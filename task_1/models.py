@@ -32,11 +32,17 @@ class ShipRow:
         )
         
     # Conservative coordinates for Baltic sea
+    # def _is_valid_latitude(self, latitude: int) -> bool:
+    #     return 50 < latitude < 70
+
+    # def _is_valid_longitude(self, longitude: int) -> bool:
+    #     return 5 < longitude < 35
+    
     def _is_valid_latitude(self, latitude: int) -> bool:
-        return 50 < latitude < 70
+        return -90 < latitude < 90
 
     def _is_valid_longitude(self, longitude: int) -> bool:
-        return 5 < longitude < 35
+        return -180 < longitude < 180
     
     def _as_tuple(self):
         return (
