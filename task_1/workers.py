@@ -25,27 +25,25 @@ class AISWorkerC:
         pid = os.getpid()
         total_written = 0
         
-        with open(config.WORKERS_C_RESULT_FILE, "w") as writer:
+        with open(config.WORKERS_C_RESULT_FILE, "a", newline="") as writer:
             writer_csv = csv.writer(writer)
             
-            flagged_by_draught = []
             for i in range(1, size):
                 previous = ShipRow(*chunk[i - 1])
                 current = ShipRow(*chunk[i])
                 
                 if previous.mmsi == current.mmsi:
-                    draught_change_rate = (current.draught - previous.draught) / current.draught
-                    draught_change_rate_perc = np.round(
-                        draught_change_rate * 100, 
-                        decimals=2
-                    )
-                    difference_seconds = db_helper._get_time_diff(previous.timestamp, current.timestamp)
-                    difference_hours = (difference_seconds / 3600)
-                    if draught_change_rate_perc >= 5 and  difference_hours >= config.HOUR_LIMIT:
-                        heapq.heappush(flagged_by_draught, current)
-                        total_written += 1
+                    draught_change_rate = abs(current.draught - previous.draught) / previous.draught
+                    
+                    previous_timestamp = datetime.strptime(previous.timestamp, "%Y-%m-%d %H:%M:%S")
+                    current_timestamp = datetime.strptime(current.timestamp, "%Y-%m-%d %H:%M:%S")
+                    
+                    difference_seconds = db_helper._get_time_diff(previous_timestamp, current_timestamp)
+                    # difference_hours = (difference_seconds / 3600)
+                    if draught_change_rate >= 0.05 and difference_seconds > 7200:
+                        # saving anomaly
+                        writer_csv.writerow(previous._as_tuple_db())
+                        writer_csv.writerow(current._as_tuple_db())
+                        total_written += 1      
                 
-                
-        flagged_by_draught_sorted = sorted(flagged_by_draught)        
-        writer_csv.writerows(flagged_by_draught_sorted)
         return pid, total_written

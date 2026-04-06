@@ -59,8 +59,8 @@ class FileReader:
                         "%d/%m/%Y %H:%M:%S"
                     )
                     if (
-                        not row[latitude_idx] or
                         not row[longitude_idx] or 
+                        not row[latitude_idx] or
                         not row[mmsi_idx] or
                         not row[sog_idx] or
                         not row[draught_idx]
@@ -68,8 +68,8 @@ class FileReader:
                         continue
                          
                     mmsi = row[mmsi_idx]
-                    latitude = np.float32(row[latitude_idx])
                     longitude = np.float32(row[longitude_idx])
+                    latitude = np.float32(row[latitude_idx])
                     sog = np.float32(row[sog_idx])
                     draught = np.float32(row[draught_idx])
                     
@@ -122,8 +122,38 @@ class DBHelper:
             ).fetchone()[0]
             return record_count
         
+    # TODO: fix ordering. Some anomaly detectino parts require ordering by mmsi and timestamp
+    # some require globally
+    def _fetch_records_db_by_chunk_long(self, db_name: str, chunk_size: int) -> Iterable[list]:
+        """
+        Getting records by chunks from database file
+
+        Parameters
+        ----------
+        db_name : str
+            Database file name        
+
+        Returns
+        -------
+        Iterable[list]
+            chunk of ship records 
+        """  
+
+        with connect(db_name) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY MMSI, timestamp"
+            )
+
+            while True:
+                rows = cursor.fetchmany(chunk_size)
+                if not rows:
+                    break
+
+                yield [row for row in rows]
     
-    def _fetch_records_db_by_chunk(self, db_name: str, chunk_size: int) -> Iterable[list]:
+    def _fetch_records_db_by_chunk_global(self, db_name: str, chunk_size: int) -> Iterable[list]:
         """
         Getting records by chunks from database file
 

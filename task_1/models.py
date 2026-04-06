@@ -11,16 +11,16 @@ class ShipTypeError(Exception):
 class ShipRow:
     mmsi: str
     timestamp: datetime
-    latitude: np.float32
     longitude: np.float32
+    latitude: np.float32
     sog: np.float32
     draught: np.float32
     
     @property
     def point(self) -> tuple:
         return (
-            self.latitude, 
-            self.longitude
+            self.longitude,
+            self.latitude 
         )
         
     def _is_mmsi_valid(self, mmsi: str) -> bool:
@@ -32,27 +32,43 @@ class ShipRow:
         )
         
     # Conservative coordinates for Baltic sea
+    def _is_valid_latitude(self, latitude: float) -> bool:
+        return 50.0 < latitude < 70.0
+
+    def _is_valid_longitude(self, longitude: float) -> bool:
+        return 5.0 < longitude < 35.0
+    
+    # def _is_valid_latitude(self, latitude: float) -> bool:
+    #     return -90.0 <= latitude <= 90.0
+
+    # def _is_valid_longitude(self, longitude: float) -> bool:
+    #     return -180.0 <= longitude <= 180.0
+    
     # def _is_valid_latitude(self, latitude: int) -> bool:
-    #     return 50 < latitude < 70
+    #     return -90 < latitude < 90
 
     # def _is_valid_longitude(self, longitude: int) -> bool:
-    #     return 5 < longitude < 35
-    
-    def _is_valid_latitude(self, latitude: int) -> bool:
-        return -90 < latitude < 90
-
-    def _is_valid_longitude(self, longitude: int) -> bool:
-        return -180 < longitude < 180
+    #     return -180 < longitude < 180
     
     def _as_tuple(self):
         return (
             self.mmsi,
             self.timestamp,
-            self.latitude.item(),
             self.longitude.item(),
+            self.latitude.item(),
             self.sog.item(),
             self.draught.item()
         )
+        
+    def _as_tuple_db(self):
+        return [
+            self.mmsi,
+            self.timestamp,
+            self.longitude,
+            self.latitude,
+            self.sog,
+            self.draught
+        ]
     
     # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
