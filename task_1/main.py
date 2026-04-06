@@ -48,7 +48,7 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     """
     
     print("------------STARTING anomaly C -------------")
-    print("Finding flagging ships by draught 5\% and 2 hours blackout")
+    print("Finding flagging ships by draught 5 percent and 2 hours blackout")
     
     start_time = datetime.now()
     
@@ -58,21 +58,25 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
         task_completed = 0
+        written_total = 0
+        db_reader = db_helper._fetch_records_db_by_chunk_long(
+            db_name=db_name, 
+            chunk_size=config.CHUNK_SIZE
+        )
         
         # creating multiple workers
-        with Pool(processes=config.WORKERS_C, initargs=(db_name)) as pool:
+        with Pool(processes=config.WORKERS_C) as pool:
             for pid, written in pool.imap(
                 func = AISWorkerC.process,
-                iterable=db_helper._fetch_records_db_by_chunk(
-                    db_name=db_name, 
-                    chunk_size=config.CHUNK_SIZE
-                ),
+                iterable=db_reader,
                 chunksize=config.WORKER_C_TASKS            
             ):
                 if task_completed % config.LOG_EVERY_C == 0:
                     print(f"Anomaly C> Proccess PID={pid} Flagged ships {written}")
+                written_total += written
         
         print(f"Saved anomaly C report in {config.WORKERS_C_RESULT_FILE}")
+        print(f"Written anomaly C records: {written_total}")
     
     end_time = datetime.now()
     execution_total = int((end_time - start_time).total_seconds())

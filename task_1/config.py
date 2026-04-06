@@ -29,4 +29,4 @@ class Config:
     WORKER_C_TASKS = 2    
     WORKERS_C_RESULT_FILE = "anomaly_c_draught.csv"
     HOUR_LIMIT = 2
-    LOG_EVERY_C = 10
+    LOG_EVERY_C = 1000
