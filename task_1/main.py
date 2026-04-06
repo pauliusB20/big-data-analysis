@@ -21,9 +21,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     """
     Anomaly A analysis
     """
-
-    config = Config()
-
     print("------------STARTING anomaly A -------------")
     print("Finding flagging ships by 4 hours black out and movement")
 
@@ -31,12 +28,12 @@ def _run_anomaly_a_analysis(config: Config) -> None:
 
     db_helper = DBHelper()
 
-
+    # TODO: add delete csv before running anomaly workers
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
         task_completed = 0
 
-
+        written_total = 0
         with Pool(processes=6) as pool:
             for pid, written in pool.imap(
                     func=AIC_worker_A.process,
@@ -46,10 +43,13 @@ def _run_anomaly_a_analysis(config: Config) -> None:
                     ),
                     chunksize=2
             ):
-                if task_completed % 10 == 0:
+                if task_completed and written > 0:
                     print(f"Anomaly A> Proccess PID={pid} Flagged ships {written}")
+                
+                written_total += written
 
         print(f"Saved anomaly A report in Anomaly_A_result.csv")
+        print(f"Written total: {written_total}")
 
     end_time = datetime.now()
     execution_total = int((end_time - start_time).total_seconds())
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     )
     
 
-    run_ais_parsers(config)
+    # run_ais_parsers(config)
     run_anomaly_analysis(config)
     
     
