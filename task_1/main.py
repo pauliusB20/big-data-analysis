@@ -85,7 +85,7 @@ if __name__ == "__main__":
     
     run_ais_parsers(config)
     
-    run_anomaly_analysis()
+    run_anomaly_analysis(config)
     
     
     end_time = datetime.now()
