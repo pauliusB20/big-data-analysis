@@ -33,29 +33,30 @@ class ShipRow:
         
     # Conservative coordinates for Baltic sea
     def _is_valid_latitude(self, latitude: int) -> bool:
-        return 50 < latitude < 70
+        return -90 < latitude < 90
 
     def _is_valid_longitude(self, longitude: int) -> bool:
-        return 5 < longitude < 35
+        return -180 < longitude < 180
     
     def _as_tuple(self):
         return (
             self.mmsi,
             self.timestamp,
-            self.latitude.item(),
-            self.longitude.item(),
-            self.sog.item(),
-            self.draught.item()
+            float(self.latitude),
+            float(self.longitude),
+            float(self.sog),
+            float(self.draught)
         )
     
     # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
     def __post_init__(self) -> None:
-       if not self._is_mmsi_valid(self.mmsi):
-           raise ShipTypeError("MMSI not ship type!")
-       
-       if not self._is_valid_latitude(self.latitude):
-           raise ValueError("Invalid latitude")
-       
-       if not self._is_valid_latitude(self.longitude):
-           raise ValueError("Invalid longitude")
+        if not self._is_mmsi_valid(self.mmsi):
+            raise ShipTypeError("MMSI not ship type!")
+
+        if not self._is_valid_latitude(self.latitude):
+            raise ValueError(f"Invalid latitude: {self.latitude}")
+
+        # Fixed: use _is_valid_longitude here
+        if not self._is_valid_longitude(self.longitude):
+            raise ValueError(f"Invalid longitude: {self.longitude}")
