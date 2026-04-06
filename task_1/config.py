@@ -13,9 +13,13 @@ class Config:
     DB_NAME = "AIS_DB.db"
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
-        "aisdk-2025-02-28.csv",
-        "aisdk-2025-03-01.csv"
+        "aisdk-2025-02-28.csv"
+        # "aisdk-2025-03-01.csv"
     ]
+    
+    
+    # anomaly A
+    LOG_EVERY_A = 10000
     
     # TODO: add additional config params here for other anomalies if needed
     # For importing and using config.py, example:
