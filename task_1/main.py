@@ -1,16 +1,16 @@
 import heapq
 import os
-import numpy as np
 from collections import namedtuple
 from multiprocessing import Pool
 from sqlite3 import connect
 from datetime import datetime
+
+from haversine import haversine as _haversine, Unit
 from parser import run_ais_parsers
 from config import Config
 from helper import DBHelper
 from tqdm import tqdm
 
-_R_NM = np.float64(3440.065)
 _3600 = 3600.0
 ShipRow = namedtuple("ShipRow", ["mmsi", "ts", "lat", "lon", "sog", "draught"])
 
@@ -21,7 +21,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     """
 
     # TODO: Anomaly A detection
-
     pass
 
 
@@ -31,7 +30,6 @@ def _run_anomaly_b_analysis(config: Config) -> None:
     """
 
     # TODO: Anomaly B detection
-
     pass
 
 
@@ -41,17 +39,7 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     """
 
     # TODO: Anomaly C detection
-
     pass
-
-
-def _haversine(lat1, lon1, lat2, lon2):
-    phi1 = np.radians(lat1)
-    phi2 = np.radians(lat2)
-    dphi = np.radians(lat2 - lat1)
-    dlam = np.radians(lon2 - lon1)
-    a = np.sin(dphi / 2) ** 2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlam / 2) ** 2
-    return float(2 * _R_NM * np.arctan2(np.sqrt(a), np.sqrt(1 - a)))
 
 
 def _to_ts(ts) -> int:
@@ -86,8 +74,8 @@ def _iter_vessels(db_paths: list[str], table_name: str):
 
     def _flush(rows):
         rows.sort(key=lambda r: r.ts)
-        kept     = [rows[0]]
-        prev_ts  = rows[0].ts
+        kept = [rows[0]]
+        prev_ts = rows[0].ts
         prev_lat = rows[0].lat
         prev_lon = rows[0].lon
 
@@ -97,7 +85,7 @@ def _iter_vessels(db_paths: list[str], table_name: str):
             if r.lat == prev_lat and r.lon == prev_lon:
                 continue
             kept.append(r)
-            prev_ts  = r.ts
+            prev_ts = r.ts
             prev_lat = r.lat
             prev_lon = r.lon
 
@@ -139,21 +127,25 @@ def detect_anomaly_d(args: tuple) -> dict:
         if t_h <= 0:
             continue
 
-        dist  = _haversine(p1.lat, p1.lon, p2.lat, p2.lon)
+        dist = _haversine(
+            (p1.lat, p1.lon),
+            (p2.lat, p2.lon),
+            unit=Unit.NAUTICAL_MILES
+        )
         speed = dist / t_h
 
         if speed > config.CLONE_SPEED_KT:
             d_list.append({
-                "mmsi":              mmsi,
-                "implied_knots":     round(speed, 1),
-                "dist_nm":           round(dist, 3),
+                "mmsi": mmsi,
+                "implied_knots": round(speed, 1),
+                "dist_nm": round(dist, 3),
                 "spoofing_artifact": dist > config.CLONE_MAX_DIST_NM,
-                "ts_start":          p1.ts,
-                "lat1":              p1.lat,
-                "lon1":              p1.lon,
-                "ts_end":            p2.ts,
-                "lat2":              p2.lat,
-                "lon2":              p2.lon,
+                "ts_start": p1.ts,
+                "lat1": p1.lat,
+                "lon1": p1.lon,
+                "ts_end": p2.ts,
+                "lat2": p2.lat,
+                "lon2": p2.lon,
             })
 
     dfsi_row = None
@@ -161,10 +153,10 @@ def detect_anomaly_d(args: tuple) -> dict:
         real_clone = [x for x in d_list if not x["spoofing_artifact"]]
         total_jump = sum(x["dist_nm"] for x in real_clone)
         dfsi_row = {
-            "mmsi":               mmsi,
-            "dfsi":               round(total_jump * config.DFSI_W_JUMP, 3),
-            "total_jump_nm":      round(total_jump, 3),
-            "clones":             len(real_clone),
+            "mmsi": mmsi,
+            "dfsi": round(total_jump * config.DFSI_W_JUMP, 3),
+            "total_jump_nm": round(total_jump, 3),
+            "clones": len(real_clone),
             "artifacts_excluded": len(d_list) - len(real_clone),
         }
 
@@ -178,7 +170,7 @@ def _run_anomaly_d_analysis(config: Config) -> None:
     print("\nRunning Anomaly D — Identity Clone detection ...")
     db_paths = [DBHelper._get_db_from_file_name(f) for f in config.CSV_FILE_SOURCE]
 
-    all_d        = []
+    all_d = []
     dfsi_results = []
 
     with Pool(processes=config.WORKERS) as pool:
@@ -225,7 +217,7 @@ if __name__ == "__main__":
 
     print("-----STARTING AIS DATA ANALYZER-----")
 
-    start_time     = datetime.now()
+    start_time = datetime.now()
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Started run time at: {start_time_str}")
     print("-------------------")
@@ -239,8 +231,8 @@ if __name__ == "__main__":
 
     run_anomaly_analysis(config)
 
-    end_time       = datetime.now()
-    end_time_str   = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    end_time = datetime.now()
+    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     execution_time = (end_time - start_time).seconds
 
     print(f"Total execution time: {execution_time}s")
