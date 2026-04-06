@@ -16,16 +16,17 @@ import numpy as np
 import csv
 import os
 
-
+        
 class FileReader:
+    
     """
     Helper class for reading data from file
     """
-
+    
     def __init__(self, file_path: str, chunk_size: int) -> None:
         self.file_path = file_path
         self.chunk_size = chunk_size
-
+    
     def _read_csv(self) -> Iterable[dict]:
         """
         Iterator for reading data from CSV
@@ -34,7 +35,7 @@ class FileReader:
         with open(self.file_path, newline="") as reader:
             csv_reader = csv.reader(reader)
             headline = next(csv_reader)
-
+            
             # columns to select
             mmsi_idx = headline.index("MMSI")
             timestamp_idx = headline.index("# Timestamp")
@@ -42,36 +43,36 @@ class FileReader:
             latitude_idx = headline.index("Latitude")
             sog_idx = headline.index("SOG")
             draught_idx = headline.index("Draught")
-
+            
             for row in csv_reader:
-
+                
                 if len(chunk) > self.chunk_size:
-                    yield {self.file_path: chunk}
+                    yield {self.file_path : chunk}
                     chunk = []
-
+                
                 if not row[timestamp_idx]:
                     continue
-
+                
                 try:
                     timestamp = datetime.strptime(
-                        row[timestamp_idx],
+                        row[timestamp_idx], 
                         "%d/%m/%Y %H:%M:%S"
                     )
                     if (
-                            not row[latitude_idx] or
-                            not row[longitude_idx] or
-                            not row[mmsi_idx] or
-                            not row[sog_idx] or
-                            not row[draught_idx]
+                        not row[longitude_idx] or 
+                        not row[latitude_idx] or
+                        not row[mmsi_idx] or
+                        not row[sog_idx] or
+                        not row[draught_idx]
                     ):
                         continue
-
+                         
                     mmsi = row[mmsi_idx]
                     latitude = np.float32(row[latitude_idx])
                     longitude = np.float32(row[longitude_idx])
                     sog = np.float32(row[sog_idx])
                     draught = np.float32(row[draught_idx])
-
+                    
                     new_row = ShipRow(
                         mmsi=mmsi,
                         timestamp=timestamp,
@@ -81,26 +82,22 @@ class FileReader:
                         draught=draught
                     )
                     chunk.append(new_row)
-
+                
                 except Exception as exception:
                     continue
-
+                
         if chunk:
-            yield {self.file_path: chunk}
-
-
+            yield {self.file_path : chunk}
+            
 class DBHelper:
-    """
+    """    
       Helper class for working with SQLITE datasets
     """
-
+    
     def __init__(self):
         self.config = Config()
-
-    def _get_time_diff(self, datetime_a: datetime, datetime_b: datetime) -> int:
-        difference = (datetime_b - datetime_a).total_seconds()
-        return int(difference)
-
+        
+        
     def _get_record_limit(self, db_name: str) -> int:
         """
         Getting record count from parser database system table
@@ -114,28 +111,29 @@ class DBHelper:
         -------
         int
             record count
-        """
-
+        """       
+        
         with connect(db_name) as conn:
             record_count = conn.execute(
                 f"SELECT COUNT(*) FROM {self.config.DB_TABLE}"
             ).fetchone()[0]
             return record_count
-
-    def _fetch_records_db_by_chunk(self, db_name: str, chunk_size: int) -> Iterable[list]:
+        
+    # records sorted by MMSI, timestamp
+    def _fetch_records_db_by_chunk_long(self, db_name: str, chunk_size: int) -> Iterable[list]:
         """
         Getting records by chunks from database file
 
         Parameters
         ----------
         db_name : str
-            Database file name
+            Database file name        
 
         Returns
         -------
         Iterable[list]
-            chunk of ship records
-        """
+            chunk of ship records 
+        """  
 
         with connect(db_name) as conn:
             cursor = conn.cursor()
@@ -149,10 +147,42 @@ class DBHelper:
                 if not rows:
                     break
 
+                # skip first column if needed
                 yield [row for row in rows]
+    
+    # records sorted by timestamp
+    def _fetch_records_db_by_chunk_global(self, db_name: str, chunk_size: int) -> Iterable[list]:
+        """
+        Getting records by chunks from database file
 
-    @staticmethod
-    def _write_records_to_db(db_name: str, records: list[tuple], table: str = "AIS_TABLE") -> bool:
+        Parameters
+        ----------
+        db_name : str
+            Database file name        
+
+        Returns
+        -------
+        Iterable[list]
+            chunk of ship records 
+        """  
+
+        with connect(db_name) as conn:
+            cursor = conn.cursor()
+
+            cursor.execute(
+                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY timestamp"
+            )
+
+            while True:
+                rows = cursor.fetchmany(chunk_size)
+                if not rows:
+                    break
+
+                # skip first column if needed
+                yield [row for row in rows]
+    
+    @staticmethod       
+    def _write_records_to_db(db_name: str, records: list[tuple], table: str="AIS_TABLE") -> bool:
         """
         Writing records to SQLITE database
 
@@ -160,7 +190,7 @@ class DBHelper:
         ----------
         db_name : str
             Database file name.
-
+        
         records : list[tuple]
             records that need to be saved in database
 
@@ -169,12 +199,12 @@ class DBHelper:
         Boolean
             written succesfully.
         """
-
+               
         with connect(db_name) as conn:
             cursor = conn.cursor()
-
+            
             cursor.execute(
-                f"""
+            f"""
                 CREATE TABLE IF NOT EXISTS {table} (
                     mmsi VARCHAR(100),
                     timestamp DATETIME,
@@ -184,7 +214,7 @@ class DBHelper:
                     draught REAL
                 )            
             """)
-
+            
             cursor.executemany(
                 f"""
                 INSERT INTO {table}
@@ -193,9 +223,10 @@ class DBHelper:
                 records
             )
             conn.commit()
-
-        return True
-
+        
+        return True            
+    
+    
     @staticmethod
     def _get_db_from_file_name(file_name: str) -> str:
         """

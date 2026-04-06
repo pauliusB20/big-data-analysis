@@ -22,7 +22,7 @@ class AIC_worker_A:
         pid=os.getpid()
         total_written=0
         Going_dark= []
-        with open("Anomaly_A_result.csv", "w") as writer:
+        with open("Anomaly_A_result.csv", "a") as writer:
             writer_csv = csv.writer(writer)
             for i in range(1,size):
                 previous=ShipRow(*chunk[i-1])
@@ -40,14 +40,14 @@ class AIC_worker_A:
                     difference_hours = (difference_seconds / 3600)
                     distance=float(hs.haversine((previous.latitude,previous.longitude), (current.latitude,current.longitude)))
                     print(difference_hours)
-                    if difference_hours>0.1 and distance>0:
+                    if difference_hours>4 and distance>0:
                         Going_dark.append(current)
                         total_written=total_written+1
 
 
             going_dark_sorted = sorted(Going_dark, key=lambda ship: ship.timestamp)
 
-            rows_to_write = [ship._as_tuple() for ship in going_dark_sorted]
+            rows_to_write = [ship._as_tuple_db() for ship in going_dark_sorted]
             writer_csv.writerows(rows_to_write)
             return pid, total_written
 

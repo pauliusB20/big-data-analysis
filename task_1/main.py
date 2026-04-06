@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from collections import defaultdict
 from dataclasses import astuple
 from datetime import datetime
-from parser import run_ais_parsers
+from parser import run_ais_parsers, AISParser
 # from haversine import haversine, Unit
 from collections import defaultdict
 from config import Config
@@ -40,7 +40,7 @@ def _run_anomaly_a_analysis(config: Config) -> None:
         with Pool(processes=6) as pool:
             for pid, written in pool.imap(
                     func=AIC_worker_A.process,
-                    iterable=db_helper._fetch_records_db_by_chunk(
+                    iterable=db_helper._fetch_records_db_by_chunk_long(
                         db_name=db_name,
                         chunk_size=config.CHUNK_SIZE
                     ),
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     )
     
 
-
+    run_ais_parsers(config)
     run_anomaly_analysis(config)
     
     
