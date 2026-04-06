@@ -29,7 +29,7 @@ if __name__ == "__main__":
         
         db_name = helper._get_db_from_file_name(file_name)
         
-        db_reader = helper._fetch_records_db_by_chunk(
+        db_reader = helper._fetch_records_db_by_chunk_long(
             db_name=db_name,
             chunk_size=CHUNK_SIZE
         )
