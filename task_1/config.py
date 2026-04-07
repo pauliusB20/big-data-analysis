@@ -38,4 +38,6 @@ class Config:
     IGNORE_STATUS_B = {"Moored", "At anchor", "Aground", 
                        "Not under command"}
     VALID_MOBILE_TYPES = {"Class A"}
+    
+    WORKERS_C_RESULT_FILE = "anomalies_B.csv"
     #--------------------------

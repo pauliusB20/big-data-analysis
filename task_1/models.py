@@ -8,6 +8,48 @@ class ShipTypeError(Exception):
         super().__init__(*args)
 
 @dataclass
+class LowSOGTrack:
+    start: datetime
+    end: datetime
+    lat: float
+    lon: float
+    sog_sum: float
+    count: int
+    vessel_type: str
+    
+    @property
+    def point(self) -> tuple:
+        return (self.lat, self.lon)
+
+@dataclass
+class ProximityTrack:
+    start: datetime
+    end: datetime
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    sog_sum: float
+    count: int
+    min_dist: float
+    max_dist: float
+    vessel_type_1: str
+    vessel_type_2: str
+
+    @property
+    def start_point(self) -> tuple:
+        return (
+            self.start_lat, 
+            self.start_lon
+        )
+    
+    @property
+    def end_point(self) -> tuple:
+        return (
+            self.end_lat, 
+            self.end_lon
+        )
+@dataclass
 class ShipRow:
     mmsi: str
     timestamp: datetime

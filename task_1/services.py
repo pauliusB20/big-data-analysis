@@ -3,44 +3,22 @@ import csv
 from dataclasses import dataclass
 from datetime import datetime
 from haversine import haversine
-from models import ShipRow
+from models import ShipRow, ProximityTrack, LowSOGTrack
 from helper import DBHelper
+from config import Config
 
-# ------------------------
-# DATA STRUCTURES
-# ------------------------
-@dataclass
-class LowSOGTrack:
-    start: datetime
-    end: datetime
-    lat: float
-    lon: float
-    sog_sum: float
-    count: int
-    vessel_type: str
-
-@dataclass
-class ProximityTrack:
-    start: datetime
-    end: datetime
-    start_lat: float
-    start_lon: float
-    end_lat: float
-    end_lon: float
-    sog_sum: float
-    count: int
-    min_dist: float
-    max_dist: float
-    vessel_type_1: str
-    vessel_type_2: str
-
-# ------------------------
-# HELPERS
-# ------------------------
-def format_ts(ts: datetime) -> str:
-    return ts.strftime('%Y-%m-%d %H:%M:%S')
 
 def is_suspicious_encounter(p: ProximityTrack, config, ignore_types=set()) -> bool:
+    """Helper function for detecting anomalies
+
+    Args:
+        p (ProximityTrack): ship anomaly range
+        config (Config): config for detecting
+        ignore_types (set, optional): for ignoring certain classes. Defaults to set().
+
+    Returns:
+        bool: status that informs if encounter is suspicious
+    """
     if p.vessel_type_1 in ignore_types or p.vessel_type_2 in ignore_types:
         return False
 
@@ -59,12 +37,12 @@ def is_suspicious_encounter(p: ProximityTrack, config, ignore_types=set()) -> bo
 # ------------------------
 # MAIN FUNCTION
 # ------------------------
-def run_anomaly_b(db_name: str, config):
+def run_anomaly_b(db_name: str, config: Config) -> None:
     db_helper = DBHelper()
     low_sog_tracker = {}
     proximity_tracker = {}
 
-    with open("anomalies_B.csv", "w", newline="") as f:
+    with open(config.WORKERS_C_RESULT_FILE, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
             "mmsi_1", "mmsi_2", "start", "end",
@@ -73,7 +51,10 @@ def run_anomaly_b(db_name: str, config):
         ])
 
         # PROCESS DATABASE IN CHUNKS
-        for chunk in db_helper._fetch_records_db_by_chunk_global(db_name, config.CHUNK_SIZE):
+        for chunk in db_helper._fetch_records_db_by_chunk_global(
+            db_name, 
+            config.CHUNK_SIZE
+        ):
             rows_by_mmsi = defaultdict(list)
 
             # FILTER AND STORE ONLY ESSENTIAL FIELDS
@@ -98,7 +79,7 @@ def run_anomaly_b(db_name: str, config):
                 total_sog = sum(s[3] for s in ships)  # s[3] = sog
                 vessel_type = ships[0][4]  # s[4] = vessel_type
 
-                start_ts, start_lat, start_lon, _, _ = ships[0]
+                start_ts, _, _, _, _ = ships[0]
                 end_ts, end_lat, end_lon, _, _ = ships[-1]
 
                 if mmsi in low_sog_tracker:
@@ -132,7 +113,7 @@ def run_anomaly_b(db_name: str, config):
                     if abs(d1.lat - d2.lat) > 0.01 or abs(d1.lon - d2.lon) > 0.01:
                         continue
 
-                    dist_now = haversine((d1.lat, d1.lon), (d2.lat, d2.lon))
+                    dist_now = haversine(d1.point, d2.point)
 
                     if dist_now <= config.PROXIMITY_DIST:
                         pair = tuple(sorted((m1, m2)))
@@ -145,21 +126,34 @@ def run_anomaly_b(db_name: str, config):
                             # FLUSH OLD ENCOUNTER
                             if gap_minutes > config.MAX_GAP_MINUTES:
                                 if is_suspicious_encounter(p, config, config.IGNORE_STATUS_B):
+                                    mmsi_a = pair[0]
+                                    mmsi_b = pair[1]
+                                    time_start = db_helper._get_timestamp_str(p.start)
+                                    time_end = db_helper._get_timestamp_str(p.end)
+                                    time_diff = round((p.end - p.start).total_seconds() / 3600, 2)
+                                    avg_sog = round(p.sog_sum / p.count, 2)
+                                    dist = round(haversine(p.start_point, p.end_point), 2)
                                     writer.writerow([
-                                        pair[0], pair[1],
-                                        format_ts(p.start),
-                                        format_ts(p.end),
-                                        round((p.end - p.start).total_seconds() / 3600, 2),
-                                        p.start_lat, p.start_lon,
-                                        p.end_lat, p.end_lon,
-                                        round(p.sog_sum / p.count, 2),
-                                        round(haversine((p.start_lat, p.start_lon), (p.end_lat, p.end_lon)), 2)
+                                        mmsi_a, 
+                                        mmsi_b,
+                                        time_start,
+                                        time_end,
+                                        time_diff,
+                                        p.start_lat, 
+                                        p.start_lon,
+                                        p.end_lat, 
+                                        p.end_lon,
+                                        avg_sog,
+                                        dist
                                     ])
                                 # Reset and keep only latest positions in memory
                                 proximity_tracker[pair] = ProximityTrack(
-                                    start=curr_t, end=curr_t,
-                                    start_lat=d1.lat, start_lon=d1.lon,
-                                    end_lat=d1.lat, end_lon=d1.lon,
+                                    start=curr_t, 
+                                    end=curr_t,
+                                    start_lat=d1.lat, 
+                                    start_lon=d1.lon,
+                                    end_lat=d1.lat, 
+                                    end_lon=d1.lon,
                                     sog_sum=d1.sog_sum + d2.sog_sum,
                                     count=d1.count + d2.count,
                                     min_dist=dist_now,
@@ -179,9 +173,12 @@ def run_anomaly_b(db_name: str, config):
                         else:
                             # FIRST TIME PAIR
                             proximity_tracker[pair] = ProximityTrack(
-                                start=curr_t, end=curr_t,
-                                start_lat=d1.lat, start_lon=d1.lon,
-                                end_lat=d1.lat, end_lon=d1.lon,
+                                start=curr_t, 
+                                end=curr_t,
+                                start_lat=d1.lat, 
+                                start_lon=d1.lon,
+                                end_lat=d1.lat, 
+                                end_lon=d1.lon,
                                 sog_sum=d1.sog_sum + d2.sog_sum,
                                 count=d1.count + d2.count,
                                 min_dist=dist_now,

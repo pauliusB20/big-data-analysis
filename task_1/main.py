@@ -14,7 +14,7 @@ import numpy as np
 import csv
 import os            
 
-from anomaly_B import run_anomaly_b #module for B
+from services import run_anomaly_b #module for B
 
 
 
@@ -40,8 +40,6 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         run_anomaly_b(db_name, config)
     
-    pass
-
 
 def _run_anomaly_c_analysis(config: Config) -> None:
     """
