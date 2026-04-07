@@ -6,15 +6,15 @@ from dataclasses import astuple
 from datetime import datetime
 from parser import run_ais_parsers
 # from haversine import haversine, Unit
-from collections import defaultdict
 from config import Config
 from helper import DBHelper
+from workers import AISWorkerB
 from tqdm import tqdm
 import numpy as np
 import csv
 import os            
 
-from anomaly_B import run_anomaly_b #module for B
+# from anomaly_B import run_anomaly_b #module for B
 
 
 
@@ -38,9 +38,30 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         print(f"Processing DB: {db_name}")
 
-        run_anomaly_b(db_name, config)
-    
-    pass
+        db_helper = DBHelper()
+        # run_anomaly_b(db_name, config)
+        db_reader = db_helper._fetch_records_db_by_chunk_global(
+            db_name, 
+            config.CHUNK_SIZE
+        )   
+        
+        written_total = 0
+        task_completed = 0
+        # creating multiple workers
+        with Pool(processes=config.WORKERS_B) as pool:
+            for pid, written in pool.imap(
+                func = AISWorkerB.process,
+                iterable=db_reader,
+                chunksize=config.WORKER_B_TASKS            
+            ):
+                # if written > 0:
+                if task_completed % config.LOG_EVERY_B == 0:
+                    print(f"Anomaly B> Proccess PID={pid} Flagged ships {written}")
+                written_total += written
+                task_completed += 1
+        
+        print(f"Saved anomaly B report in {config.WORKERS_B_RESULT_FILE}")
+        print(f"Written anomaly B records: {written_total}")
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:
@@ -87,7 +108,7 @@ if __name__ == "__main__":
         "-------------------"
     )
     
-    #run_ais_parsers(config)
+    # run_ais_parsers(config)
     
     run_anomaly_analysis(config)
 

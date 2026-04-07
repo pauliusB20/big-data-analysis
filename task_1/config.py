@@ -23,12 +23,13 @@ class Config:
     # 
     # config = Config()
     # print(config.CHUNK_SIZE)
+    # print(config.CHUNK_SIZE)
 
     #--------------------------
     # Config data for anomaly B
     SOG_THRESHOLD = 1.0
     B_HOURS = 2.0
-    PROXIMITY_DIST = 0.5 # 500 meters max separation
+    PROXIMITY_DIST_KM = 0.5 # 500 meters max separation
     MAX_GAP_MINUTES = 10
     MIN_DISPLACEMENT = 0.3 # Must move 0.3km total (prevents harbor activity)
     AVG_SOG_MIN = 0 # Must have some drift (prevent harbour activity)
@@ -38,4 +39,9 @@ class Config:
     IGNORE_STATUS_B = {"Moored", "At anchor", "Aground", 
                        "Not under command"}
     VALID_MOBILE_TYPES = {"Class A"}
+    WORKER_B_TASKS = 5
+    WORKERS_B = 4
+    LOG_EVERY_B = 100
+    
+    WORKERS_B_RESULT_FILE = "anomalies_B.csv"
     #--------------------------

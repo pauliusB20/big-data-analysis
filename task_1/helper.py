@@ -104,7 +104,9 @@ class DBHelper:
     
     def __init__(self):
         self.config = Config()
-        
+
+    def _get_timestamp_str(ts: datetime) -> str:
+        return ts.strftime('%Y-%m-%d %H:%M:%S')
         
     def _get_record_limit(self, db_name: str) -> int:
         """

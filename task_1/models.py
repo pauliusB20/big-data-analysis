@@ -8,6 +8,31 @@ class ShipTypeError(Exception):
         super().__init__(*args)
 
 @dataclass
+class LowSOGTrack:
+    start: datetime
+    end: datetime
+    lat: float
+    lon: float
+    sog_sum: float
+    count: int
+    vessel_type: str
+
+@dataclass
+class ProximityTrack:
+    start: datetime
+    end: datetime
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
+    sog_sum: float
+    count: int
+    min_dist: float
+    max_dist: float
+    vessel_type_1: str
+    vessel_type_2: str
+
+@dataclass
 class ShipRow:
     mmsi: str
     timestamp: datetime
