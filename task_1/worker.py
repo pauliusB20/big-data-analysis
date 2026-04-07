@@ -17,42 +17,51 @@ class AIC_worker_A:
     @staticmethod
     def process(chunk):
         config = Config()
-        db_helper=DBHelper()
-        size=len(chunk)
-        pid=os.getpid()
-        total_written=0
-        Going_dark= []
-        
-        with open("Anomaly_A_result.csv", "a") as writer:
-            writer_csv = csv.writer(writer)
-            for i in range(1,size):
-                previous=ShipRow(*chunk[i-1])
-                current=ShipRow(*chunk[i])
-                if previous.mmsi == current.mmsi:
+        size = len(chunk)
+        pid = os.getpid()
+        total_written = 0
+        Going_dark = []
 
-                    from_dt = datetime.fromisoformat(previous.timestamp)
-                    to_dt = datetime.fromisoformat(current.timestamp)
+        # Keep track of which ships we have already processed in this chunk
+        seen_mmsis = set()
 
-                    # print(from_dt, to_dt)
+        for i in range(1, size):
+            previous = ShipRow(*chunk[i - 1])
+            current = ShipRow(*chunk[i])
 
-                    difference_delta = to_dt-from_dt
+            if previous.mmsi == current.mmsi:
+                # Calculate time and distance
+                from_dt = datetime.fromisoformat(previous.timestamp)
+                to_dt = datetime.fromisoformat(current.timestamp)
+                difference_hours = (to_dt - from_dt).total_seconds() / 3600
+                distance = hs.haversine(previous.point, current.point)
 
-                    difference_seconds = difference_delta.total_seconds()
-                    difference_hours = (difference_seconds / 3600)
-                    distance=hs.haversine(previous.point, current.point)
-                    # print(difference_hours)
-                    
-                    if difference_hours > 4 and distance > 0:
+                if difference_hours > config.DIFFERENCE_HOURS and distance > config.DISTANCE:
+                    # ONLY write if 'previous' was NOT the very first time
+                    # we saw this ship in the current chunk.
+                    if previous.mmsi in seen_mmsis:
+                        Going_dark.append(previous)
                         Going_dark.append(current)
-                        total_written=total_written + 1
+                        total_written += 1
 
+                # Mark this MMSI as 'seen' AFTER the first potential comparison
+                seen_mmsis.add(previous.mmsi)
+            else:
+                # If the MMSI changed, the 'previous' ship is gone.
+                # We don't add to seen_mmsis here because the 'current'
+                # ship is now the new 'first' observation for its ID.
+                pass
 
-            going_dark_sorted = sorted(Going_dark, key=lambda ship: ship.timestamp)
+        # Sort by MMSI and Timestamp
+        Going_dark.sort(key=lambda ship: (ship.mmsi, ship.timestamp))
 
-            rows_to_write = [ship._as_tuple_db() for ship in going_dark_sorted]
+        rows_to_write = [ship._as_tuple_db() for ship in Going_dark]
+
+        with open(config.WRITE_TO_FILE_A, "a", newline='') as writer:
+            writer_csv = csv.writer(writer)
             writer_csv.writerows(rows_to_write)
-            return pid, total_written
 
+        return pid, total_written
 
 
 
