@@ -20,7 +20,7 @@ class ShipRow:
     def point(self) -> tuple:
         return (
             self.latitude,
-            self.longitude
+            self.longitude            
         )
         
     def _is_mmsi_valid(self, mmsi: str) -> bool:
