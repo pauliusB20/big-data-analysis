@@ -1,5 +1,6 @@
 import heapq
 import os
+import csv
 from collections import namedtuple
 from multiprocessing import Pool
 from sqlite3 import connect
@@ -65,6 +66,11 @@ def _run_anomaly_d_analysis(config: Config) -> None:
 
     # TODO: save results to CSV liko other anomalies?
     dfsi_results.sort(key=lambda x: x["dfsi"], reverse=True)
+
+    with open("anomaly_results.csv", "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["mmsi", "dfsi", "clones", "total_jump_nm", "artifacts_excluded"])
+        writer.writeheader()
+        writer.writerows(dfsi_results)
 
     print(f"  Anomaly D Identity Clone:   {len(all_d):>7,} events")
     print(f"  Flagged vessels (DFSI > 0): {len(dfsi_results):>7,}")
