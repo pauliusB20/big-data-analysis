@@ -15,14 +15,13 @@ from parser import run_ais_parsers, AISParser
 from collections import defaultdict
 from config import Config
 from helper import DBHelper
-from workers import AISWorkerC
+from workers import AISWorkerC, AISWorkerD, AISWorkerA
 from tqdm import tqdm
 import numpy as np
 import csv
 import os
-from worker import AIC_worker_A
 from pathlib import Path
-
+import haversine as hs
 
 
 def _run_anomaly_a_analysis(config: Config) -> None:
@@ -53,7 +52,7 @@ def _run_anomaly_a_analysis(config: Config) -> None:
         written_total = 0
         with Pool(processes=config.ANOMALY_A_PROCESSES) as pool:
             for pid, written in pool.imap(
-                    func=AIC_worker_A.process,
+                    func=AISWorkerA.process,
                     iterable=db_helper._fetch_records_db_by_chunk_long(
                         db_name=db_name,
                         chunk_size=config.CHUNK_SIZE
@@ -167,7 +166,7 @@ def _run_anomaly_d_analysis(config: Config) -> None:
     with Pool(processes=config.WORKERS) as pool:
         for result in tqdm(
             pool.imap_unordered(
-                AISWorkerD.detect_anomaly_d,
+                AISWorkerD.process,
                 helper._get_db_ship_pairs(db_paths, config.DB_TABLE),
                 chunksize=config.TAKS_PER_WORKER
             ),
