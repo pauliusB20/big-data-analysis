@@ -8,6 +8,8 @@ from config import Config
 from helper import FileReader, DBHelper
 import os
 
+
+
 class AISWorker:
     
     """

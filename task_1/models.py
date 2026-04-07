@@ -38,6 +38,12 @@ class ShipRow:
     def _is_valid_longitude(self, longitude: float) -> bool:
         return 5.0 < longitude < 35.0
     
+    # def _is_valid_latitude(self, latitude: float) -> bool:
+    #     return -90.0 <= latitude <= 90.0
+
+    # def _is_valid_longitude(self, longitude: float) -> bool:
+    #     return -180.0 <= longitude <= 180.0
+    
     # def _is_valid_latitude(self, latitude: int) -> bool:
     #     return -90 < latitude < 90
 
@@ -53,6 +59,16 @@ class ShipRow:
             self.sog.item(),
             self.draught.item()
         )
+        
+    def _as_tuple_db(self):
+        return [
+            self.mmsi,
+            self.timestamp,
+            self.longitude,
+            self.latitude,
+            self.sog,
+            self.draught
+        ]
     
     def _as_tuple_db(self):
         return [
