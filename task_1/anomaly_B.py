@@ -5,6 +5,7 @@ from datetime import datetime
 from haversine import haversine
 from models import ShipRow
 from helper import DBHelper
+from config import Config
 
 # ------------------------
 # DATA STRUCTURES

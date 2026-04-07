@@ -11,6 +11,7 @@ from haversine import haversine
 import numpy as np
 import os, csv, heapq
 import logging.handlers
+import logging
 
 class AISWorkerB:
     
@@ -18,6 +19,13 @@ class AISWorkerB:
         AIS Worker for anomaly B
         detection
     """
+    low_sog_tracker: dict
+    proximity_tracker: dict
+
+    @staticmethod
+    def init_worker(low_sog_tracker: dict, proximity_tracker: dict) -> None:
+        AISWorkerB.low_sog_tracker = low_sog_tracker
+        AISWorkerB.proximity_tracker = proximity_tracker
     
     @staticmethod
     def process(chunk: list[tuple]) -> tuple[int, int]:
@@ -42,8 +50,8 @@ class AISWorkerB:
             
         config = Config()
         helper = DBHelper()
-        low_sog_tracker = {}
-        proximity_tracker = {}
+        # low_sog_tracker = {}
+        # proximity_tracker = {}
         write_header = not os.path.exists(config.WORKERS_B_RESULT_FILE)
 
         with open(config.WORKERS_B_RESULT_FILE, "a", newline="") as f:
@@ -85,9 +93,9 @@ class AISWorkerB:
                 start_ts, _, _, _, _ = ships[0]
                 end_ts, end_lat, end_lon, _, _ = ships[-1]
 
-                if mmsi in low_sog_tracker:
-                    old = low_sog_tracker[mmsi]
-                    low_sog_tracker[mmsi] = LowSOGTrack(
+                if mmsi in AISWorkerB.low_sog_tracker:
+                    old = AISWorkerB.low_sog_tracker[mmsi]
+                    AISWorkerB.low_sog_tracker[mmsi] = LowSOGTrack(
                         start=old.start,
                         end=end_ts,
                         lat=end_lat,
@@ -97,7 +105,7 @@ class AISWorkerB:
                         vessel_type=old.vessel_type
                     )
                 else:
-                    low_sog_tracker[mmsi] = LowSOGTrack(
+                    AISWorkerB.low_sog_tracker[mmsi] = LowSOGTrack(
                         start=start_ts,
                         end=end_ts,
                         lat=end_lat,
@@ -108,7 +116,7 @@ class AISWorkerB:
                     )
 
             # PROXIMITY CHECK
-            cands = list(low_sog_tracker.items())
+            cands = list(AISWorkerB.low_sog_tracker.items())
             for i, (m1, d1) in enumerate(cands):
                 for j in range(i + 1, len(cands)):
                     m2, d2 = cands[j]
@@ -122,8 +130,8 @@ class AISWorkerB:
                         pair = tuple(sorted((m1, m2)))
                         curr_t = max(d1.end, d2.end)
 
-                        if pair in proximity_tracker:
-                            p = proximity_tracker[pair]
+                        if pair in AISWorkerB.proximity_tracker:
+                            p = AISWorkerB.proximity_tracker[pair]
                             gap_minutes = (curr_t - p.end).total_seconds() / 60
 
                             # FLUSH OLD ENCOUNTER
@@ -153,7 +161,7 @@ class AISWorkerB:
                                     written += 1
                                     
                                 # Reset and keep only latest positions in memory
-                                proximity_tracker[pair] = ProximityTrack(
+                                AISWorkerB.proximity_tracker[pair] = ProximityTrack(
                                     start=curr_t, end=curr_t,
                                     start_lat=d1.lat, start_lon=d1.lon,
                                     end_lat=d1.lat, end_lon=d1.lon,
@@ -175,7 +183,7 @@ class AISWorkerB:
                                 p.max_dist = max(p.max_dist, dist_now)
                         else:
                             # FIRST TIME PAIR
-                            proximity_tracker[pair] = ProximityTrack(
+                            AISWorkerB.proximity_tracker[pair] = ProximityTrack(
                                 start=curr_t, end=curr_t,
                                 start_lat=d1.lat, start_lon=d1.lon,
                                 end_lat=d1.lat, end_lon=d1.lon,

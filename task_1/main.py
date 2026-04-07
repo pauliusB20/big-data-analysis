@@ -12,7 +12,9 @@ from workers import AISWorkerB
 from tqdm import tqdm
 import numpy as np
 import csv
-import os            
+import os
+from multiprocessing import Manager
+      
 
 # from anomaly_B import run_anomaly_b #module for B
 
@@ -27,10 +29,12 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     
     pass
 
+# TODO: optimize shared memory
 def _run_anomaly_b_analysis(config: Config) -> None:
     """
     Anomaly B analysis
     """
+    
     print("\n--- Running Anomaly B ---")
 
     for file_name in config.CSV_FILE_SOURCE:
@@ -38,30 +42,35 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         print(f"Processing DB: {db_name}")
 
-        db_helper = DBHelper()
-        # run_anomaly_b(db_name, config)
-        db_reader = db_helper._fetch_records_db_by_chunk_global(
-            db_name, 
-            config.CHUNK_SIZE
-        )   
-        
-        written_total = 0
-        task_completed = 0
-        # creating multiple workers
-        with Pool(processes=config.WORKERS_B) as pool:
-            for pid, written in pool.imap(
-                func = AISWorkerB.process,
-                iterable=db_reader,
-                chunksize=config.WORKER_B_TASKS            
-            ):
-                # if written > 0:
-                if task_completed % config.LOG_EVERY_B == 0:
-                    print(f"Anomaly B> Proccess PID={pid} Flagged ships {written}")
-                written_total += written
-                task_completed += 1
-        
-        print(f"Saved anomaly B report in {config.WORKERS_B_RESULT_FILE}")
-        print(f"Written anomaly B records: {written_total}")
+        with Manager() as manager:
+            low_sog_tracker = manager.dict()
+            proximity_tracker = manager.dict()
+            db_helper = DBHelper()
+            # run_anomaly_b(db_name, config)
+            db_reader = db_helper._fetch_records_db_by_chunk_global(
+                db_name, 
+                config.CHUNK_SIZE
+            )   
+            
+            written_total = 0
+            # task_completed = 0
+            # creating multiple workers
+            
+            
+            with Pool(processes=config.WORKERS_B, initializer=AISWorkerB.init_worker, initargs=(low_sog_tracker, proximity_tracker)) as pool:
+                for pid, written in pool.imap(
+                    func = AISWorkerB.process,
+                    iterable=db_reader,
+                    chunksize=config.WORKER_B_TASKS            
+                ):
+                    if written > 0:
+                    # if task_completed % config.LOG_EVERY_B == 0:
+                        print(f"Anomaly B> Proccess PID={pid} Flagged ships {written}")
+                        written_total += written
+                    # task_completed += 1
+            
+            print(f"Saved anomaly B report in {config.WORKERS_B_RESULT_FILE}")
+            print(f"Written anomaly B records: {written_total}")
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:

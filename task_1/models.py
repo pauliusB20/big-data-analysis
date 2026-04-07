@@ -16,7 +16,7 @@ class LowSOGTrack:
     sog_sum: float
     count: int
     vessel_type: str
-
+    
 @dataclass
 class ProximityTrack:
     start: datetime
