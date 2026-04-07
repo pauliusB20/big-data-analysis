@@ -17,6 +17,15 @@ class Config:
         "aisdk-2025-03-01.csv"
     ]
     
+    
+    # anomaly A
+    LOG_EVERY_A = 10000
+    WRITE_TO_FILE_A="ANOMALY_A_result.csv"
+    DIFFERENCE_HOURS=4
+    DISTANCE=0
+    ANOMALY_A_PROCESSES=6
+    ANOMALY_A_CHUNKSIZE=2
+    
     # TODO: add additional config params here for other anomalies if needed
     # For importing and using config.py, example:
     # from config import Config
