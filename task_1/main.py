@@ -14,6 +14,7 @@ import numpy as np
 import csv
 import os
 from worker import AIC_worker_A
+from pathlib import Path
 
 
 
@@ -21,6 +22,14 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     """
     Anomaly A analysis
     """
+    file_path = Path(config.WRITE_TO_FILE_A)
+
+    if file_path.exists():
+        file_path.unlink()
+        print(f"Successfully deleted {config.WRITE_TO_FILE_A}")
+    else:
+        print(f"The file {config.WRITE_TO_FILE_A} does not exist.")
+
     print("------------STARTING anomaly A -------------")
     print("Finding flagging ships by 4 hours black out and movement")
 
@@ -30,23 +39,41 @@ def _run_anomaly_a_analysis(config: Config) -> None:
 
     # TODO: add delete csv before running anomaly workers
     for file_name in config.CSV_FILE_SOURCE:
+
         db_name = db_helper._get_db_from_file_name(file_name)
         task_completed = 0
 
         written_total = 0
-        with Pool(processes=6) as pool:
+        with Pool(processes=config.ANOMALY_A_PROCESSES) as pool:
             for pid, written in pool.imap(
                     func=AIC_worker_A.process,
                     iterable=db_helper._fetch_records_db_by_chunk_long(
                         db_name=db_name,
                         chunk_size=config.CHUNK_SIZE
                     ),
-                    chunksize=2
+                    chunksize=config.ANOMALY_A_CHUNKSIZE
             ):
                 if task_completed and written > 0:
                     print(f"Anomaly A> Proccess PID={pid} Flagged ships {written}")
-                
+
+
                 written_total += written
+
+    print("Deleting the database")
+
+    for csv_file in config.CSV_FILE_SOURCE:
+
+        sanitized_name = csv_file.replace('-', '_')
+
+        db_file = Path(sanitized_name).with_suffix('.db')
+
+        if db_file.exists():
+            db_file.unlink()
+            print(f"Deleted: {db_file}")
+        else:
+            print(f"Skipped: {db_file} (File not found)")
+
+
 
         print(f"Saved anomaly A report in Anomaly_A_result.csv")
         print(f"Written total: {written_total}")
