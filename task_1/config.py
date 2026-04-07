@@ -27,6 +27,11 @@ class Config:
     ANOMALY_A_CHUNKSIZE=2
     
     # TODO: add additional config params here for other anomalies if needed
+    CLONE_SPEED_KT    = 60.0
+    CLONE_MAX_DIST_NM = 3_000.0
+    DFSI_W_JUMP       = 0.1
+    HOUR_LIMIT_D = 5
+    
     # For importing and using config.py, example:
     # from config import Config
     # 
