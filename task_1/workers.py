@@ -11,18 +11,25 @@ from models import ShipRow
 import haversine as hs
 import numpy as np
 import os, csv, heapq
+import os
+import csv
+from datetime import datetime
+import haversine as hs
+from helper import LocationHelper
 
+
+# Assuming LocationHelper and ShipRow are imported/defined in your scope
 class AISWorkerA:
-
     @staticmethod
-    def process(chunk):
+    def process(args):
+        # Unpack only what is actually being passed
+        chunk, coastal_buffer = args
+
         config = Config()
         size = len(chunk)
         pid = os.getpid()
         total_written = 0
         Going_dark = []
-
-        # Keep track of which ships we have already processed in this chunk
         seen_mmsis = set()
 
         for i in range(1, size):
@@ -30,36 +37,34 @@ class AISWorkerA:
             current = ShipRow(*chunk[i])
 
             if previous.mmsi == current.mmsi:
-                # Calculate time and distance
+                # Coastal Check
+                is_open_sea = LocationHelper.is_outside_buffer(
+                    previous.latitude, previous.longitude, coastal_buffer
+                )
+                if not is_open_sea:
+                    continue
+
+                
                 from_dt = datetime.fromisoformat(previous.timestamp)
                 to_dt = datetime.fromisoformat(current.timestamp)
                 difference_hours = (to_dt - from_dt).total_seconds() / 3600
                 distance = hs.haversine(previous.point, current.point)
 
                 if difference_hours > config.DIFFERENCE_HOURS and distance > config.DISTANCE:
-                    # ONLY write if 'previous' was NOT the very first time
-                    # we saw this ship in the current chunk.
+                    # Logic: only flag if this isn't the first time we've seen this MMSI
                     if previous.mmsi in seen_mmsis:
                         Going_dark.append(previous)
                         Going_dark.append(current)
                         total_written += 1
 
-                # Mark this MMSI as 'seen' AFTER the first potential comparison
                 seen_mmsis.add(previous.mmsi)
-            else:
-                # If the MMSI changed, the 'previous' ship is gone.
-                # We don't add to seen_mmsis here because the 'current'
-                # ship is now the new 'first' observation for its ID.
-                pass
 
-        # Sort by MMSI and Timestamp
-        Going_dark.sort(key=lambda ship: (ship.mmsi, ship.timestamp))
+        if Going_dark:
 
-        rows_to_write = [ship._as_tuple_db() for ship in Going_dark]
-
-        with open(config.WRITE_TO_FILE_A, "a", newline='') as writer:
-            writer_csv = csv.writer(writer)
-            writer_csv.writerows(rows_to_write)
+            Going_dark.sort(key=lambda ship: (ship.mmsi, ship.timestamp))
+            rows_to_write = [ship._as_tuple_db() for ship in Going_dark]
+            with open(config.WRITE_TO_FILE_A, "a", newline='') as writer:
+                csv.writer(writer).writerows(rows_to_write)
 
         return pid, total_written
 
