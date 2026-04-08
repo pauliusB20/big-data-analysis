@@ -95,15 +95,6 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:
-    """
-    Anomaly C analysis
-    
-    Goal:
-    Anomaly C (Draft Changes at Sea): 
-    Detect vessels whose draught (depth in water) 
-    changes by more than 5% during an AIS blackout of > 2 hours 
-    (implying cargo was loaded/unloaded illegally).
-    """
     
     print("------------STARTING anomaly C -------------")
     print("Finding flagging ships by draught 5 percent and 2 hours blackout")
@@ -120,10 +111,9 @@ def _run_anomaly_c_analysis(config: Config) -> None:
         os.remove(config.WORKERS_C_RESULT_FILE)
     
     print("Running anomaly C detection...")
-    # TODO: Anomaly C detection
+    
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
-        # task_completed = 0
         written_total = 0
         
         db_records = db_helper._fetch_records_db_by_chunk_long(
