@@ -13,7 +13,7 @@ Summary of the Task 1 project files
 
 - parser.py - multiprocesses parser for collecting data from big data source files
 
-- workers.py - module that has anomaly A detection, C detection, D detection worker classes for parallezation
+- workers.py - module that has anomaly A detection, C detection, D detection worker classes for parallelization
 
 - Chunk_analysis.py - script for generating plot for evaluating execution time
 
@@ -29,4 +29,5 @@ Before running the script, install required packages with virtual env:
 
 1. python -m venv task_1
 2. source task_1/bin/activate
-2. pip install --no-cache-dir -r  requirements.txt
+3. pip install --no-cache-dir -r  requirements.txt
+4. python3 main.py
