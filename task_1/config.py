@@ -13,7 +13,7 @@ class Config:
     DB_NAME = "AIS_DB.db"
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
-        #"aisdk-2025-02-28.csv"
+        "aisdk-2025-02-28.csv",
         "aisdk-2025-03-01.csv"
     ]
     
@@ -35,14 +35,9 @@ class Config:
     DFSI_W_JUMP       = 0.1
     HOUR_LIMIT_D = 5
     
-    # For importing and using config.py, example:
-    # from config import Config
-    # 
-    # config = Config()
-    # print(config.CHUNK_SIZE)
-
-    #--------------------------
+    # --------------------------
     # Config data for anomaly B
+    RESULTS_ANOMALY_B = "anomalies_B.csv"    
     SOG_THRESHOLD = 1.0
     B_HOURS = 2.0
     PROXIMITY_DIST = 0.5 # 500 meters max separation
@@ -63,3 +58,19 @@ class Config:
     WORKERS_C_RESULT_FILE = "anomaly_c_draught.csv"
     HOUR_LIMIT = 2
     LOG_EVERY_C = 1000
+    IGNORE_TYPES_C = ["Passenger"]
+    CONFIG_FIELDS_C = [
+        "previous_timestamp",
+        "previous_lat",
+        "previous_long", 
+        "next_timestamp",
+        "next_lat",
+        "next_long",
+        "dist_jump_nm",
+        "gap_in_hours",
+        "draft_change_rate",
+    ]
+    NAUTICAL_MILES = 0.5399568
+    
+    # ------------------------
+    RESULTS_ANOMALY_D = "anomaly_results.csv"

@@ -20,7 +20,7 @@ from tqdm import tqdm
 import numpy as np
 import csv
 import os            
-from anomaly_B import run_anomaly_b #module for B
+from services import run_anomaly_b #module for B
 from pathlib import Path
 import haversine as hs
 from helper import LocationHelper
@@ -38,7 +38,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
         print(f"Successfully deleted {config.WRITE_TO_FILE_A}")
     else:
         print(f"The file {config.WRITE_TO_FILE_A} does not exist.")
-
 
 
     helper = LocationHelper()
@@ -79,7 +78,7 @@ def _run_anomaly_a_analysis(config: Config) -> None:
 
         print(f"Saved anomaly A report in {config.WRITE_TO_FILE_A}")
         print(f"Written total: {written_total}")
-    pass
+
 
 
 def _run_anomaly_b_analysis(config: Config) -> None:
@@ -95,7 +94,6 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         run_anomaly_b(db_name, config)
     
-    pass
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:
@@ -115,29 +113,46 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     start_time = datetime.now()
     
     db_helper = DBHelper()
+    location_helper = LocationHelper()
+    coastal_buffer = location_helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
     
+    # delete results anomaly C file before running the anomaly detection C again
+    if os.path.exists(config.WORKERS_C_RESULT_FILE):
+        print("Removing old anomaly C results...")
+        os.remove(config.WORKERS_C_RESULT_FILE)
+    
+    print("Running anomaly C detection...")
     # TODO: Anomaly C detection
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
-        task_completed = 0
+        # task_completed = 0
         written_total = 0
-        db_reader = db_helper._fetch_records_db_by_chunk_long(
-            db_name=db_name, 
+        
+        db_records = db_helper._fetch_records_db_by_chunk_long(
+            db_name=db_name,
             chunk_size=config.CHUNK_SIZE
         )
+
+        # MATCH THIS with the Worker.process unpacking
+        worker_input = ((chunk, coastal_buffer) for chunk in db_records)
+
         
         # creating multiple workers
         with Pool(processes=config.WORKERS_C) as pool:
             for pid, written in pool.imap(
                 func = AISWorkerC.process,
-                iterable=db_reader,
+                iterable=worker_input,
                 chunksize=config.WORKER_C_TASKS            
             ):
-                if task_completed % config.LOG_EVERY_C == 0:
-                    print(f"Anomaly C> Proccess PID={pid} Flagged ships {written}")
+                if written > 0:
+                    print(f"Anomaly C> Proccess PID={pid} Flagged ships {written} with illegal cargo")
                 written_total += written
         
-        print(f"Saved anomaly C report in {config.WORKERS_C_RESULT_FILE}")
+        if written_total > 0:
+            print(f"Saved anomaly C report in {config.WORKERS_C_RESULT_FILE}")
+        else:
+            print("No anomaly C were saved in results file")
+            
         print(f"Written anomaly C records: {written_total}")
     
     end_time = datetime.now()
@@ -175,7 +190,7 @@ def _run_anomaly_d_analysis(config: Config) -> None:
     # TODO: save results to CSV liko other anomalies?
     dfsi_results.sort(key=lambda x: x["dfsi"], reverse=True)
 
-    with open("anomaly_results.csv", "w", newline="") as f:
+    with open(config.RESULTS_ANOMALY_D, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["mmsi", "dfsi", "clones", "total_jump_nm", "artifacts_excluded"])
         writer.writeheader()
         writer.writerows(dfsi_results)
@@ -192,17 +207,8 @@ def _run_anomaly_d_analysis(config: Config) -> None:
             f"total_nm={vessel['total_jump_nm']}"
         )
 
-
-def run_anomaly_analysis(config: Config) -> None:
-    """
-    Anomaly analysis
-    """
-    _run_anomaly_a_analysis(config)
-    _run_anomaly_b_analysis(config)
-    _run_anomaly_c_analysis(config)
-    _run_anomaly_d_analysis(config)
-
-    print("Deleting the database")
+def _run_cleanup_process(config: Config) -> None:
+    print("ENDING: Deleting the database")
 
     for csv_file in config.CSV_FILE_SOURCE:
 
@@ -216,6 +222,25 @@ def run_anomaly_analysis(config: Config) -> None:
         else:
             print(f"Skipped: {db_file} (File not found)")
 
+
+def run_anomaly_analysis(config: Config) -> None:
+    """
+    Anomaly analysis
+    """
+    
+    start_time = datetime.now()
+    
+    _run_anomaly_a_analysis(config)
+    _run_anomaly_b_analysis(config)
+    _run_anomaly_c_analysis(config)
+    _run_anomaly_d_analysis(config)    
+    _run_cleanup_process(config)
+    
+    end_time = datetime.now()
+    total_seconds = (end_time - start_time).total_seconds()
+    print(f"Total execution: {total_seconds}s")
+
+
 if __name__ == "__main__":
     config = Config()
 
@@ -228,7 +253,13 @@ if __name__ == "__main__":
         "-------------------"
     )
     
-    run_ais_parsers(config)
+    # Skip parsing if DB files already exist — saves ~20 min during development
+    db_paths = [DBHelper._get_db_from_file_name(f) for f in config.CSV_FILE_SOURCE]
+    if all(os.path.exists(p) for p in db_paths):
+        print("DB files already exist — skipping parsing, running anomaly detection only")
+    else:
+        run_ais_parsers(config)
+    
     run_anomaly_analysis(config)
 
     

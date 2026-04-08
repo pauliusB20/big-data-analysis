@@ -26,7 +26,7 @@ class AISWorker:
                 INSERT 
                 INTO 
                 {config.DB_TABLE} 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)         
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)         
             """, chunk)
             connection.commit()
     
@@ -100,6 +100,8 @@ class AISParser:
                         latitude REAL,
                         sog REAL,
                         draught REAL,
+                        cargo_type VARCHAR(100),
+                        ship_type VARCHAR(100),
                         nav_status VARCHAR(100),
                         vessel_type VARCHAR(100)
                     )

@@ -1,4 +1,4 @@
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass, astuple, fields
 from datetime import datetime
 import numpy as np
 
@@ -15,6 +15,8 @@ class ShipRow:
     latitude: np.float32
     sog: np.float32
     draught: np.float32
+    cargo_type: str
+    ship_type: str
     nav_status: str #New, added for anomaly B
     vessel_type: str #New, added for anomaly B
     
@@ -40,19 +42,7 @@ class ShipRow:
     def _is_valid_longitude(self, longitude: float) -> bool:
         return 5.0 < longitude < 35.0
     
-    # def _is_valid_latitude(self, latitude: float) -> bool:
-    #     return -90.0 <= latitude <= 90.0
-
-    # def _is_valid_longitude(self, longitude: float) -> bool:
-    #     return -180.0 <= longitude <= 180.0
-    
-    # def _is_valid_latitude(self, latitude: int) -> bool:
-    #     return -90 < latitude < 90
-
-    # def _is_valid_longitude(self, longitude: int) -> bool:
-    #     return -180 < longitude < 180
-
-    def _as_tuple(self):
+    def _as_tuple(self) -> tuple:
         return (
             self.mmsi,
             self.timestamp,
@@ -60,11 +50,16 @@ class ShipRow:
             self.latitude.item(),
             self.sog.item(),
             self.draught.item(),
+            self.cargo_type,
+            self.ship_type,
             self.nav_status, #New, added for anomaly B
             self.vessel_type #New, added for anomaly B
         )
+    
+    def _get_header(self) -> list:
+        return [field.name for field in fields(self)]
         
-    def _as_tuple_db(self):
+    def _as_tuple_db(self) -> list:
         return [
             self.mmsi,
             self.timestamp,
@@ -72,21 +67,12 @@ class ShipRow:
             self.latitude,
             self.sog,
             self.draught,
+            self.cargo_type,
+            self.ship_type,
             self.nav_status, #New, added for anomaly B
             self.vessel_type #New, added for anomaly B
         ]
     
-    def _as_tuple_db(self):
-        return [
-            self.mmsi,
-            self.timestamp,
-            self.longitude,
-            self.latitude,
-            self.sog,
-            self.draught,
-            self.nav_status, #New, added for anomaly B
-            self.vessel_type #New, added for anomaly B
-        ]
     
     # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
