@@ -7,8 +7,6 @@ Summary of the Task 1 project files
 
 - config.py - script settings
 
-- examples.py - example how to use methods for multiproccesses
-
 - helper.py - methods that are used for reading data and working with AIS data
 
 - models.py - data classes that are used for analyzing AIS ship data
