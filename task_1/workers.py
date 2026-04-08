@@ -60,7 +60,7 @@ class AISWorkerA:
                 seen_mmsis.add(previous.mmsi)
 
         if Going_dark:
-            
+
             Going_dark.sort(key=lambda ship: (ship.mmsi, ship.timestamp))
             rows_to_write = [ship._as_tuple_db() for ship in Going_dark]
             with open(config.WRITE_TO_FILE_A, "a", newline='') as writer:
