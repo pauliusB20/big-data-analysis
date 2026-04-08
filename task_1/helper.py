@@ -242,7 +242,18 @@ class DBHelper:
             conns.append(conn)
             cursors.append(
                 conn.execute(
-                    f"SELECT mmsi, timestamp, longitude, latitude, sog, draught "
+                    f"""SELECT 
+                        mmsi, 
+                        timestamp, 
+                        longitude, 
+                        latitude, 
+                        sog, 
+                        draught, 
+                        cargo_type, 
+                        ship_type, 
+                        nav_status, 
+                        vessel_type
+                    """
                     f"FROM {table_name} ORDER BY mmsi, timestamp"
                 )
             )
@@ -257,7 +268,11 @@ class DBHelper:
                     longitude, 
                     latitude, 
                     sog, 
-                    draught
+                    draught,
+                    cargo_type,
+                    ship_type,
+                    nav_status,
+                    vessel_type
                 ) = row
                 timestamp = self._get_timestamp(timestamp_str)
                 heapq.heappush(heap, 
@@ -268,6 +283,10 @@ class DBHelper:
                                    latitude, 
                                    sog, 
                                    draught, 
+                                   cargo_type,
+                                   ship_type,
+                                   nav_status,
+                                   vessel_type,
                                    idx
                                 ))
 
@@ -281,7 +300,11 @@ class DBHelper:
                 longitude, 
                 latitude, 
                 sog, 
-                draught, 
+                draught,
+                cargo_type,
+                ship_type,
+                nav_status,
+                vessel_type,
                 idx
             ) = heapq.heappop(heap)
 
@@ -303,7 +326,11 @@ class DBHelper:
                     longitude=longitude, 
                     latitude=latitude, 
                     sog=sog, 
-                    draught=draught
+                    draught=draught,
+                    cargo_type=cargo_type,
+                    ship_type=ship_type,
+                    nav_status=nav_status,
+                    vessel_type=vessel_type
                 ))
 
             next_ping = cursors[idx].fetchone()
@@ -314,7 +341,11 @@ class DBHelper:
                     longitude_2, 
                     latitude_2, 
                     sog_2, 
-                    draught_2
+                    draught_2,
+                    cargo_type_2,
+                    ship_type_2,
+                    nav_status_2,
+                    vessel_type_2,
                 ) = next_ping
                 timestamp_2 = self._get_timestamp(timestamp_str)
                 heapq.heappush(heap, (
@@ -324,6 +355,10 @@ class DBHelper:
                     latitude_2, 
                     sog_2, 
                     draught_2, 
+                    cargo_type_2,
+                    ship_type_2,
+                    nav_status_2,
+                    vessel_type_2,
                     idx))
 
         if current_mmsi is not None and current_rows:
@@ -369,6 +404,8 @@ class DBHelper:
                     latitude REAL,
                     sog REAL,
                     draught REAL,
+                    cargo_type VARCHAR(100),
+                    ship_type VARCHAR(100),
                     nav_status VARCHAR(100),
                     vessel_type VARCHAR(100)
                 )            
@@ -377,7 +414,7 @@ class DBHelper:
             cursor.executemany(
                 f"""
                 INSERT INTO {table}
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
                 """,
                 records
             )
