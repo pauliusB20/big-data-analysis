@@ -14,7 +14,7 @@ class Config:
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
         "aisdk-2025-02-28.csv",
-        # "aisdk-2025-03-01.csv"
+        "aisdk-2025-03-01.csv"
     ]
     
     
@@ -25,6 +25,8 @@ class Config:
     DISTANCE=0
     ANOMALY_A_PROCESSES=6
     ANOMALY_A_CHUNKSIZE=2
+
+    COSTAL_FILE="ne_10m_coastline"
     
     # TODO: add additional config params here for other anomalies if needed
     # Anomaly D
