@@ -44,10 +44,7 @@ class AISWorkerA:
                 if not is_open_sea:
                     continue
 
-                
-                from_dt = datetime.fromisoformat(previous.timestamp)
-                to_dt = datetime.fromisoformat(current.timestamp)
-                difference_hours = (to_dt - from_dt).total_seconds() / 3600
+                difference_hours = (current.timestamp - previous.timestamp).total_seconds() / 3600
                 distance = hs.haversine(previous.point, current.point)
 
                 if difference_hours > config.DIFFERENCE_HOURS and distance > config.DISTANCE:
@@ -83,9 +80,7 @@ class AISWorkerC:
     @staticmethod
     def _get_hour_gap(previous: ShipRow, next: ShipRow) -> float:
         db_helper = DBHelper()
-        previous_timestamp = datetime.strptime(previous.timestamp, "%Y-%m-%d %H:%M:%S")
-        next_timestamp = datetime.strptime(next.timestamp, "%Y-%m-%d %H:%M:%S")
-        difference_seconds = db_helper._get_time_diff(previous_timestamp, next_timestamp)
+        difference_seconds = db_helper._get_time_diff(previous.timestamp, next.timestamp)
         difference_hours = (difference_seconds / 3600)
         return difference_hours    
     
@@ -103,10 +98,8 @@ class AISWorkerC:
         if size == 0:
             return pid, 0 
         
-        results_file_exists = os.path.exists(config.WORKERS_C_RESULT_FILE)
-        
-        
-            
+        results_file_exists = os.path.exists(config.WORKERS_C_RESULT_FILE)       
+           
         for i in range(1, size):
             previous = ShipRow(*chunk[i - 1])
             current = ShipRow(*chunk[i])

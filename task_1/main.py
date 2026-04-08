@@ -80,7 +80,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
         print(f"Written total: {written_total}")
 
 
-
 def _run_anomaly_b_analysis(config: Config) -> None:
     """
     Anomaly B analysis
@@ -187,7 +186,6 @@ def _run_anomaly_d_analysis(config: Config) -> None:
             if result["dfsi"]:
                 dfsi_results.append(result["dfsi"])
 
-    # TODO: save results to CSV liko other anomalies?
     dfsi_results.sort(key=lambda x: x["dfsi"], reverse=True)
 
     with open(config.RESULTS_ANOMALY_D, "w", newline="") as f:
