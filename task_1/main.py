@@ -40,7 +40,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
         print(f"The file {config.WRITE_TO_FILE_A} does not exist.")
 
 
-
     helper = LocationHelper()
     coastal_buffer = helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
 
@@ -79,7 +78,7 @@ def _run_anomaly_a_analysis(config: Config) -> None:
 
         print(f"Saved anomaly A report in {config.WRITE_TO_FILE_A}")
         print(f"Written total: {written_total}")
-    pass
+
 
 
 def _run_anomaly_b_analysis(config: Config) -> None:
@@ -95,7 +94,6 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         run_anomaly_b(db_name, config)
     
-    pass
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:
@@ -235,7 +233,12 @@ def run_anomaly_analysis(config: Config) -> None:
     _run_anomaly_a_analysis(config)
     _run_anomaly_b_analysis(config)
     _run_anomaly_c_analysis(config)
-    _run_anomaly_d_analysis(config)
+    _run_anomaly_d_analysis(config)    
+    _run_cleanup_process(config)
+    
+    end_time = datetime.now()
+    total_seconds = (end_time - start_time).total_seconds()
+    print(f"Total execution: {total_seconds}s")
 
 
 if __name__ == "__main__":
