@@ -99,30 +99,39 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     start_time = datetime.now()
     
     db_helper = DBHelper()
+    location_helper = LocationHelper()
+    coastal_buffer = location_helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
     
     # delete results anomaly C file before running the anomaly detection C again
     if os.path.exists(config.WORKERS_C_RESULT_FILE):
         print("Removing old anomaly C results...")
         os.remove(config.WORKERS_C_RESULT_FILE)
     
+    print("Running anomaly C detection...")
     # TODO: Anomaly C detection
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
         # task_completed = 0
         written_total = 0
         
+        db_records = db_helper._fetch_records_db_by_chunk_long(
+            db_name=db_name,
+            chunk_size=config.CHUNK_SIZE
+        )
+
+        # MATCH THIS with the Worker.process unpacking
+        worker_input = ((chunk, coastal_buffer) for chunk in db_records)
+
+        
         # creating multiple workers
         with Pool(processes=config.WORKERS_C) as pool:
             for pid, written in pool.imap(
                 func = AISWorkerC.process,
-                iterable=db_helper._fetch_records_db_by_chunk_long(
-                    db_name=db_name, 
-                    chunk_size=config.CHUNK_SIZE
-                ),
+                iterable=worker_input,
                 chunksize=config.WORKER_C_TASKS            
             ):
                 if written > 0:
-                    print(f"Anomaly C> Proccess PID={pid} Flagged ships {written}")
+                    print(f"Anomaly C> Proccess PID={pid} Flagged ships {written} with illegal cargo")
                 written_total += written
         
         if written_total > 0:
@@ -231,7 +240,12 @@ if __name__ == "__main__":
         "-------------------"
     )
     
-
+    # Skip parsing if DB files already exist — saves ~20 min during development
+    db_paths = [DBHelper._get_db_from_file_name(f) for f in config.CSV_FILE_SOURCE]
+    if all(os.path.exists(p) for p in db_paths):
+        print("DB files already exist — skipping parsing, running anomaly detection only")
+    else:
+        run_ais_parsers(config)
     
     run_anomaly_analysis(config)
     

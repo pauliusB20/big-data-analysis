@@ -1,4 +1,4 @@
-from dataclasses import dataclass, astuple
+from dataclasses import dataclass, astuple, fields
 from datetime import datetime
 import numpy as np
 
@@ -40,19 +40,7 @@ class ShipRow:
     def _is_valid_longitude(self, longitude: float) -> bool:
         return 5.0 < longitude < 35.0
     
-    # def _is_valid_latitude(self, latitude: float) -> bool:
-    #     return -90.0 <= latitude <= 90.0
-
-    # def _is_valid_longitude(self, longitude: float) -> bool:
-    #     return -180.0 <= longitude <= 180.0
-    
-    # def _is_valid_latitude(self, latitude: int) -> bool:
-    #     return -90 < latitude < 90
-
-    # def _is_valid_longitude(self, longitude: int) -> bool:
-    #     return -180 < longitude < 180
-    
-    def _as_tuple(self):
+    def _as_tuple(self) -> tuple:
         return (
             self.mmsi,
             self.timestamp,
@@ -63,8 +51,11 @@ class ShipRow:
             self.cargo_type,
             self.ship_type
         )
+    
+    def _get_header(self) -> list:
+        return [field.name for field in fields(self)]
         
-    def _as_tuple_db(self):
+    def _as_tuple_db(self) -> list:
         return [
             self.mmsi,
             self.timestamp,
@@ -75,7 +66,7 @@ class ShipRow:
             self.cargo_type,
             self.ship_type
         ]
-    
+        
     # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
     def __post_init__(self) -> None:
