@@ -20,7 +20,7 @@ from tqdm import tqdm
 import numpy as np
 import csv
 import os            
-from anomaly_B import run_anomaly_b #module for B
+from services import run_anomaly_b #module for B
 from pathlib import Path
 import haversine as hs
 from helper import LocationHelper
@@ -190,7 +190,7 @@ def _run_anomaly_d_analysis(config: Config) -> None:
     # TODO: save results to CSV liko other anomalies?
     dfsi_results.sort(key=lambda x: x["dfsi"], reverse=True)
 
-    with open("anomaly_results.csv", "w", newline="") as f:
+    with open(config.RESULTS_ANOMALY_D, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=["mmsi", "dfsi", "clones", "total_jump_nm", "artifacts_excluded"])
         writer.writeheader()
         writer.writerows(dfsi_results)
