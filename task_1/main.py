@@ -22,6 +22,7 @@ import csv
 import os
 from pathlib import Path
 import haversine as hs
+from helper import LocationHelper
 
 
 def _run_anomaly_a_analysis(config: Config) -> None:
@@ -29,6 +30,10 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     Anomaly A analysis
     """
     file_path = Path(config.WRITE_TO_FILE_A)
+
+    # 1. Initialize the buffer once
+    helper = LocationHelper()
+    coastal_buffer = helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
 
     if file_path.exists():
         file_path.unlink()
@@ -39,42 +44,32 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     print("------------STARTING anomaly A -------------")
     print("Finding flagging ships by 4 hours black out and movement")
 
-    start_time = datetime.now()
 
     db_helper = DBHelper()
-
-    # TODO: add delete csv before running anomaly workers
     for file_name in config.CSV_FILE_SOURCE:
-
         db_name = db_helper._get_db_from_file_name(file_name)
-        task_completed = 0
-
         written_total = 0
+
+        db_records = db_helper._fetch_records_db_by_chunk_long(
+            db_name=db_name,
+            chunk_size=config.CHUNK_SIZE
+        )
+
+        # MATCH THIS with the Worker.process unpacking
+        worker_input = ((chunk, coastal_buffer) for chunk in db_records)
+
         with Pool(processes=config.ANOMALY_A_PROCESSES) as pool:
             for pid, written in pool.imap(
                     func=AISWorkerA.process,
-                    iterable=db_helper._fetch_records_db_by_chunk_long(
-                        db_name=db_name,
-                        chunk_size=config.CHUNK_SIZE
-                    ),
+                    iterable=worker_input,
                     chunksize=config.ANOMALY_A_CHUNKSIZE
             ):
-                if task_completed and written > 0:
+                if written > 0:
                     print(f"Anomaly A> Proccess PID={pid} Flagged ships {written}")
-
-
                 written_total += written
 
-
-        print(f"Saved anomaly A report in Anomaly_A_result.csv")
+        print(f"Saved anomaly A report in {config.WRITE_TO_FILE_A}")
         print(f"Written total: {written_total}")
-
-    end_time = datetime.now()
-    execution_total = int((end_time - start_time).total_seconds())
-
-    print(f"Total execution time: {execution_total}")
-    print("-----DONE---------")
-
     pass
 
 
@@ -236,7 +231,7 @@ if __name__ == "__main__":
         "-------------------"
     )
     
-    run_ais_parsers(config)
+
     
     run_anomaly_analysis(config)
     
