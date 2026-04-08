@@ -397,6 +397,20 @@ class LocationHelper:
         Creates a buffer specifically for the North/Baltic Sea region:
         Lat: 50.0 to 70.0
         Lon: 5.0 to 35.0
+
+        Parameters
+        -----------
+        Coastline_path : pathlib.Path
+            Path to coastline file
+
+        nm_distance : float
+            Distance in miles from the coast
+
+        Return
+        -----------
+        coastal_buffer_final: Shapely geometry object
+            Returns the object which creates a buffer from the coastline
+
         """
 
         world = gpd.read_file(coastline_path)
@@ -423,6 +437,20 @@ class LocationHelper:
     def is_outside_buffer(lat, lon, buffer_polygon):
         """
         Checks if a specific coordinate is outside the coastal buffer.
+
+        Parameters
+        ----------
+        lat : float
+            Latitude of coordinate
+        lon : float
+            Longitude of coordinate
+        buffer_polygon : shapely.geometry.Polygon
+            Polygon to check if a specific coordinate is outside the coastal buffer
+
+        Return
+        -------
+        is_near_shore: bool
+            Returns True if the coordinate is outside the coastal buffer
         """
 
         ship_point = Point(lon, lat)
