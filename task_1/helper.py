@@ -16,6 +16,9 @@ import numpy as np
 import heapq
 import csv
 import os
+import geopandas as gpd
+from shapely.geometry import Point, box
+
 
         
 class FileReader:
@@ -379,3 +382,53 @@ class DBHelper:
         db_table_name, _ = os.path.splitext(file_name)
         db_table_name = db_table_name.replace("-", "_")
         return db_table_name + ".db"
+
+
+
+
+class LocationHelper:
+    """
+    A utility class for geographic spatial filtering in maritime analysis.
+    """
+
+    @staticmethod
+    def create_coastal_buffer(coastline_path, nm_distance=12):
+        """
+        Creates a buffer specifically for the North/Baltic Sea region:
+        Lat: 50.0 to 70.0
+        Lon: 5.0 to 35.0
+        """
+
+        world = gpd.read_file(coastline_path)
+
+
+        analysis_region = box(5.0, 50.0, 35.0, 70.0)
+
+
+        regional_coast = world.clip(analysis_region)
+
+
+        region_metric = regional_coast.to_crs(epsg=3035)
+
+
+        meters_distance = nm_distance * 1852
+        coastal_buffer = region_metric.buffer(meters_distance)
+
+
+        coastal_buffer_final = coastal_buffer.to_crs(epsg=4326).unary_union
+
+        return coastal_buffer_final
+
+    @staticmethod
+    def is_outside_buffer(lat, lon, buffer_polygon):
+        """
+        Checks if a specific coordinate is outside the coastal buffer.
+        """
+
+        ship_point = Point(lon, lat)
+
+
+        is_near_shore = buffer_polygon.contains(ship_point)
+
+
+        return not is_near_shore
