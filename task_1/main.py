@@ -65,21 +65,6 @@ def _run_anomaly_a_analysis(config: Config) -> None:
 
                 written_total += written
 
-    print("Deleting the database")
-
-    for csv_file in config.CSV_FILE_SOURCE:
-
-        sanitized_name = csv_file.replace('-', '_')
-
-        db_file = Path(sanitized_name).with_suffix('.db')
-
-        if db_file.exists():
-            db_file.unlink()
-            print(f"Deleted: {db_file}")
-        else:
-            print(f"Skipped: {db_file} (File not found)")
-
-
 
         print(f"Saved anomaly A report in Anomaly_A_result.csv")
         print(f"Written total: {written_total}")
@@ -120,28 +105,36 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     
     db_helper = DBHelper()
     
+    # delete results anomaly C file before running the anomaly detection C again
+    if os.path.exists(config.WORKERS_C_RESULT_FILE):
+        print("Removing old anomaly C results...")
+        os.remove(config.WORKERS_C_RESULT_FILE)
+    
     # TODO: Anomaly C detection
     for file_name in config.CSV_FILE_SOURCE:
         db_name = db_helper._get_db_from_file_name(file_name)
-        task_completed = 0
+        # task_completed = 0
         written_total = 0
-        db_reader = db_helper._fetch_records_db_by_chunk_long(
-            db_name=db_name, 
-            chunk_size=config.CHUNK_SIZE
-        )
         
         # creating multiple workers
         with Pool(processes=config.WORKERS_C) as pool:
             for pid, written in pool.imap(
                 func = AISWorkerC.process,
-                iterable=db_reader,
+                iterable=db_helper._fetch_records_db_by_chunk_long(
+                    db_name=db_name, 
+                    chunk_size=config.CHUNK_SIZE
+                ),
                 chunksize=config.WORKER_C_TASKS            
             ):
-                if task_completed % config.LOG_EVERY_C == 0:
+                if written > 0:
                     print(f"Anomaly C> Proccess PID={pid} Flagged ships {written}")
                 written_total += written
         
-        print(f"Saved anomaly C report in {config.WORKERS_C_RESULT_FILE}")
+        if written_total > 0:
+            print(f"Saved anomaly C report in {config.WORKERS_C_RESULT_FILE}")
+        else:
+            print("No anomaly C were saved in results file")
+            
         print(f"Written anomaly C records: {written_total}")
     
     end_time = datetime.now()
@@ -197,15 +190,38 @@ def _run_anomaly_d_analysis(config: Config) -> None:
             f"total_nm={vessel['total_jump_nm']}"
         )
 
+def _run_cleanup_process(config: Config) -> None:
+    print("ENDING: Deleting the database")
+
+    for csv_file in config.CSV_FILE_SOURCE:
+
+        sanitized_name = csv_file.replace('-', '_')
+
+        db_file = Path(sanitized_name).with_suffix('.db')
+
+        if db_file.exists():
+            db_file.unlink()
+            print(f"Deleted: {db_file}")
+        else:
+            print(f"Skipped: {db_file} (File not found)")
+
 
 def run_anomaly_analysis(config: Config) -> None:
     """
     Anomaly analysis
     """
+    
+    start_time = datetime.now()
+    
     _run_anomaly_a_analysis(config)
     _run_anomaly_b_analysis(config)
     _run_anomaly_c_analysis(config)
-    _run_anomaly_d_analysis(config)
+    _run_anomaly_d_analysis(config)    
+    _run_cleanup_process(config)
+    
+    end_time = datetime.now()
+    total_seconds = (end_time - start_time).total_seconds()
+    print(f"Total execution: {total_seconds}s")
 
 
 if __name__ == "__main__":

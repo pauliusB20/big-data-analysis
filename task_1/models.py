@@ -15,6 +15,8 @@ class ShipRow:
     latitude: np.float32
     sog: np.float32
     draught: np.float32
+    cargo_type: str
+    ship_type: str
     
     @property
     def point(self) -> tuple:
@@ -57,7 +59,9 @@ class ShipRow:
             self.longitude.item(),
             self.latitude.item(),
             self.sog.item(),
-            self.draught.item()
+            self.draught.item(),
+            self.cargo_type,
+            self.ship_type
         )
         
     def _as_tuple_db(self):
@@ -67,17 +71,9 @@ class ShipRow:
             self.longitude,
             self.latitude,
             self.sog,
-            self.draught
-        ]
-    
-    def _as_tuple_db(self):
-        return [
-            self.mmsi,
-            self.timestamp,
-            self.longitude,
-            self.latitude,
-            self.sog,
-            self.draught
+            self.draught,
+            self.cargo_type,
+            self.ship_type
         ]
     
     # TODO: prideti baltic sea

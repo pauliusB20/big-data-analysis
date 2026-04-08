@@ -44,6 +44,8 @@ class FileReader:
             latitude_idx = headline.index("Latitude")
             sog_idx = headline.index("SOG")
             draught_idx = headline.index("Draught")
+            cargo_type_idx = headline.index("Cargo type")
+            ship_type_idx = headline.index("Ship type")
             
             for row in csv_reader:
                 
@@ -64,7 +66,9 @@ class FileReader:
                         not row[latitude_idx] or
                         not row[mmsi_idx] or
                         not row[sog_idx] or
-                        not row[draught_idx]
+                        not row[draught_idx] or
+                        not row[cargo_type_idx] or 
+                        not row[ship_type_idx]
                     ):
                         continue
                          
@@ -73,6 +77,8 @@ class FileReader:
                     latitude = np.float32(row[latitude_idx])
                     sog = np.float32(row[sog_idx])
                     draught = np.float32(row[draught_idx])
+                    cargo_type = row[cargo_type_idx]
+                    ship_type = row[ship_type_idx]
                     
                     new_row = ShipRow(
                         mmsi=mmsi,
@@ -80,7 +86,9 @@ class FileReader:
                         longitude=longitude,
                         latitude=latitude,
                         sog=sog,
-                        draught=draught
+                        draught=draught,
+                        cargo_type=cargo_type,
+                        ship_type=ship_type
                     )
                     chunk.append(new_row)
                 
