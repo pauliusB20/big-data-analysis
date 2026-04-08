@@ -73,17 +73,6 @@ class ShipRow:
             self.vessel_type #New, added for anomaly B
         ]
     
-    def _as_tuple_db(self):
-        return [
-            self.mmsi,
-            self.timestamp,
-            self.longitude,
-            self.latitude,
-            self.sog,
-            self.draught,
-            self.nav_status, #New, added for anomaly B
-            self.vessel_type #New, added for anomaly B
-        ]
     
     # TODO: prideti baltic sea
     # Data validator for preventing "dirty data"
