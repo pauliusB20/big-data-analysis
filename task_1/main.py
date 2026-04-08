@@ -146,7 +146,7 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     end_time = datetime.now()
     execution_total = int((end_time - start_time).total_seconds())
     
-    print(f"Total execution time: {execution_total}")
+    print(f"Total execution time: {execution_total}s")
     print("-----DONE---------")
     
 

@@ -23,3 +23,10 @@ Summary of the Task 1 project files
   dfsi scores
 
 - services.py - helper module for detecting anomalies. Has anomaly B for detecting loitering ships
+
+
+Before running the script, install required packages with virtual env:
+
+1. python -m venv task_1
+2. source task_1/bin/activate
+2. pip install --no-cache-dir -r  requirements.txt
