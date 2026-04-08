@@ -14,7 +14,7 @@ class Config:
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
         "aisdk-2025-02-28.csv",
-        # "aisdk-2025-03-01.csv"
+        "aisdk-2025-03-01.csv"
     ]
     
     

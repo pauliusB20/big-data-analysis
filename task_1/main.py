@@ -29,9 +29,17 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     """
     Anomaly A analysis
     """
+
     file_path = Path(config.WRITE_TO_FILE_A)
 
-    # 1. Initialize the buffer once
+    if file_path.exists():
+        file_path.unlink()
+        print(f"Successfully deleted {config.WRITE_TO_FILE_A}")
+    else:
+        print(f"The file {config.WRITE_TO_FILE_A} does not exist.")
+
+
+
     helper = LocationHelper()
     coastal_buffer = helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
 
@@ -131,7 +139,6 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     print("-----DONE---------")
     
 
-
 def _run_anomaly_d_analysis(config: Config) -> None:
     """
     Anomaly D analysis
@@ -187,6 +194,19 @@ def run_anomaly_analysis(config: Config) -> None:
     _run_anomaly_c_analysis(config)
     _run_anomaly_d_analysis(config)
 
+    print("Deleting the database")
+
+    for csv_file in config.CSV_FILE_SOURCE:
+
+        sanitized_name = csv_file.replace('-', '_')
+
+        db_file = Path(sanitized_name).with_suffix('.db')
+
+        if db_file.exists():
+            db_file.unlink()
+            print(f"Deleted: {db_file}")
+        else:
+            print(f"Skipped: {db_file} (File not found)")
 
 if __name__ == "__main__":
     config = Config()
@@ -201,7 +221,7 @@ if __name__ == "__main__":
     )
     
 
-    
+    run_ais_parsers(config)
     run_anomaly_analysis(config)
     
     
