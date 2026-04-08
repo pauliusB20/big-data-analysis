@@ -44,7 +44,7 @@ class AISWorkerA:
                 if not is_open_sea:
                     continue
 
-                k
+                
                 from_dt = datetime.fromisoformat(previous.timestamp)
                 to_dt = datetime.fromisoformat(current.timestamp)
                 difference_hours = (to_dt - from_dt).total_seconds() / 3600
