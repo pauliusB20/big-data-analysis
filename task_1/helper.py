@@ -39,7 +39,7 @@ class FileReader:
             csv_reader = csv.reader(reader)
             headline = next(csv_reader)
             
-            # columns to select
+            # columns to select 
             mmsi_idx = headline.index("MMSI")
             timestamp_idx = headline.index("# Timestamp")
             longitude_idx = headline.index("Longitude")
@@ -49,6 +49,9 @@ class FileReader:
             cargo_type_idx = headline.index("Cargo type")
             ship_type_idx = headline.index("Ship type")
             
+            nav_status_idx = headline.index("Navigational status") #added for anomaly B
+            type_idx = headline.index("Type of mobile") #added for anomaly B 
+
             for row in csv_reader:
                 
                 if len(chunk) > self.chunk_size:
@@ -70,7 +73,9 @@ class FileReader:
                         not row[sog_idx] or
                         not row[draught_idx] or
                         not row[cargo_type_idx] or 
-                        not row[ship_type_idx]
+                        not row[ship_type_idx] or
+                        not row[nav_status_idx] or 
+                        not row[type_idx]
                     ):
                         continue
                          
@@ -81,6 +86,8 @@ class FileReader:
                     draught = np.float32(row[draught_idx])
                     cargo_type = row[cargo_type_idx]
                     ship_type = row[ship_type_idx]
+                    nav_status = str(row[nav_status_idx])
+                    vessel_type = str(row[type_idx])
                     
                     new_row = ShipRow(
                         mmsi=mmsi,
@@ -90,8 +97,10 @@ class FileReader:
                         sog=sog,
                         draught=draught,
                         cargo_type=cargo_type,
-                        ship_type=ship_type
-                    )
+                        ship_type=ship_type,
+                        nav_status=nav_status, #New, added for anomaly B
+                        vessel_type=vessel_type #New, added for anomaly B
+                    ) 
                     chunk.append(new_row)
                 
                 except Exception as exception:
@@ -359,14 +368,16 @@ class DBHelper:
                     longitude REAL,
                     latitude REAL,
                     sog REAL,
-                    draught REAL
+                    draught REAL,
+                    nav_status VARCHAR(100),
+                    vessel_type VARCHAR(100)
                 )            
             """)
             
             cursor.executemany(
                 f"""
                 INSERT INTO {table}
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
                 """,
                 records
             )
@@ -409,6 +420,20 @@ class LocationHelper:
         Creates a buffer specifically for the North/Baltic Sea region:
         Lat: 50.0 to 70.0
         Lon: 5.0 to 35.0
+
+        Parameters
+        -----------
+        Coastline_path : pathlib.Path
+            Path to coastline file
+
+        nm_distance : float
+            Distance in miles from the coast
+
+        Return
+        -----------
+        coastal_buffer_final: Shapely geometry object
+            Returns the object which creates a buffer from the coastline
+
         """
 
         world = gpd.read_file(coastline_path)
@@ -434,6 +459,20 @@ class LocationHelper:
     def is_outside_buffer(lat, lon, buffer_polygon):
         """
         Checks if a specific coordinate is outside the coastal buffer.
+
+        Parameters
+        ----------
+        lat : float
+            Latitude of coordinate
+        lon : float
+            Longitude of coordinate
+        buffer_polygon : shapely.geometry.Polygon
+            Polygon to check if a specific coordinate is outside the coastal buffer
+
+        Return
+        -------
+        is_near_shore: bool
+            Returns True if the coordinate is outside the coastal buffer
         """
 
         ship_point = Point(lon, lat)
