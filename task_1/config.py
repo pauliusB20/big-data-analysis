@@ -10,7 +10,7 @@ class Config:
     LOG_EVERY = 10000
     TAKS_PER_WORKER = 10
     WORKERS = 6
-    DB_NAME = "AIS_DB.db"
+    # DB_NAME = "AIS_DB.db"
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
         "aisdk-2025-02-28.csv",
@@ -23,12 +23,12 @@ class Config:
     WRITE_TO_FILE_A="ANOMALY_A_result.csv"
     DIFFERENCE_HOURS=4
     DISTANCE=0
-    ANOMALY_A_PROCESSES=6
+    ANOMALY_A_PROCESSES=6 
     ANOMALY_A_CHUNKSIZE=2
 
     COSTAL_FILE="ne_10m_coastline"
     
-    # TODO: add additional config params here for other anomalies if needed
+  
     # Anomaly D
     CLONE_SPEED_KT    = 60.0
     CLONE_MAX_DIST_NM = 3_000.0
@@ -45,15 +45,17 @@ class Config:
     MIN_DISPLACEMENT = 0.3 # Must move 0.3km total (prevents harbor activity)
     AVG_SOG_MIN = 0 # Must have some drift (prevent harbour activity)
     MAX_DIST_VARIATION = 0.1 # 0.1 km, ships have to stay consistently close
+    
 
 
     IGNORE_STATUS_B = {"Moored", "At anchor", "Aground", 
                        "Not under command"}
-    VALID_MOBILE_TYPES = {"Class A"}
+    
+    VALID_MOBILE_TYPES = {"Class A", "Class B"}
     #--------------------------
     
     # Config anomaly C
-    WORKERS_C = 3    
+    WORKERS_C = 1 #3    
     WORKER_C_TASKS = 2    
     WORKERS_C_RESULT_FILE = "anomaly_c_draught.csv"
     HOUR_LIMIT = 2
@@ -72,5 +74,6 @@ class Config:
     ]
     NAUTICAL_MILES = 0.5399568
     
+    # Anomaly D
     # ------------------------
     RESULTS_ANOMALY_D = "anomaly_results.csv"

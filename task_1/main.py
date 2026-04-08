@@ -91,8 +91,7 @@ def _run_anomaly_b_analysis(config: Config) -> None:
 
         print(f"Processing DB: {db_name}")
 
-        run_anomaly_b(db_name, config)
-    
+        run_anomaly_b(db_name, config)    
 
 
 def _run_anomaly_c_analysis(config: Config) -> None:
