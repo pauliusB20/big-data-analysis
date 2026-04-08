@@ -11,10 +11,11 @@ def format_ts(ts: datetime) -> str:
     return ts.strftime('%Y-%m-%d %H:%M:%S')
 
 def run_anomaly_b(db_name: str, config: Config) -> None:
+    """
+    Anomaly B: Detects two slow-moving vessels that stay close for more than 2 hours
+    """
     db_helper = DBHelper()
     all_loiter_windows = []    
-    
-    # We use a dict to group MMSI pings
     vessel_tracks = defaultdict(list)
 
     # GENERATE LOITER WINDOW
@@ -22,7 +23,7 @@ def run_anomaly_b(db_name: str, config: Config) -> None:
         for row in chunk:
             ship = ShipRow(*row)
             
-            # Type and Status Filters
+            # Vessel type and status cheks
             if ship.vessel_type not in config.VALID_MOBILE_TYPES:
                 continue
             if ship.nav_status in config.IGNORE_STATUS_B:
@@ -57,22 +58,29 @@ def run_anomaly_b(db_name: str, config: Config) -> None:
             ])
 
 def extract_loiters(history, windows, config) -> None:
-    """Identifies stationary periods for a single vessel."""
+    """
+    Identifies stationary periods for a single vessel based on SOG and duration thresholds.
+    """
     w_start = None
     w_end = None
     sog_sum = 0
     count = 0
 
     for ship in history:
+        # check if a vessel is moving slowly
         if ship.sog < config.SOG_THRESHOLD:
             if w_start is None:
                 w_start = ship
+            # Continuously update the end of the window
             w_end = ship
             sog_sum += ship.sog
             count += 1
         else:
+            # Vessel speeds up: process and close the current window
             if w_start is not None:
                 duration = (w_end.timestamp - w_start.timestamp).total_seconds() / 3600
+                
+                # Only records windows that persist long enough
                 if duration >= config.B_HOURS:
                     windows.append({
                         "mmsi": w_start.mmsi,
@@ -84,12 +92,13 @@ def extract_loiters(history, windows, config) -> None:
                         "start_pos": (w_start.latitude, w_start.longitude),
                         "end_pos": (w_end.latitude, w_end.longitude)
                     })
+                # Reset state
                 w_start = w_end = None
                 sog_sum = count = 0
 
 def find_proximity_pairs(windows, config) -> list[dict]:
     """Optimized latitude check"""
-    # lat band (same for long) of 0.01 is around 1 km, so vhecks in this band
+    # lat band (same for long) of 0.01 is around 1 km, so checks in this band
     LAT_BAND = 0.01 
     findings = []
     
@@ -100,8 +109,8 @@ def find_proximity_pairs(windows, config) -> list[dict]:
     for i in range(n):
         a = wins[i]
         for j in range(i + 1, n):
-            b = wins[j]
-            
+            b = wins[j] 
+    
             # If the next ship is further than the band, stop checking
             if (b["lat"] - a["lat"]) > LAT_BAND:
                 break
