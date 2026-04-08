@@ -101,6 +101,9 @@ def find_proximity_pairs(windows, config) -> list[dict]:
         a = wins[i]
         for j in range(i + 1, n):
             b = wins[j]
+            if b["mmsi"] == 245809000:
+                import pdb; pdb.set_trace()
+ 
             
             # If the next ship is further than the band, stop checking
             if (b["lat"] - a["lat"]) > LAT_BAND:
