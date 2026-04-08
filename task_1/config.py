@@ -13,8 +13,8 @@ class Config:
     DB_NAME = "AIS_DB.db"
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
-        "aisdk-2025-02-28.csv"
-        #"aisdk-2025-03-01.csv"
+        #"aisdk-2025-02-28.csv"
+        "aisdk-2025-03-01.csv"
     ]
     
     # TODO: add additional config params here for other anomalies if needed
@@ -37,5 +37,5 @@ class Config:
 
     IGNORE_STATUS_B = {"Moored", "At anchor", "Aground", 
                        "Not under command"}
-    VALID_MOBILE_TYPES = {"Class A"}
+    VALID_MOBILE_TYPES = {"Class A", "Class B"}
     #--------------------------
