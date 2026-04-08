@@ -21,8 +21,8 @@ class ShipRow:
     @property
     def point(self) -> tuple:
         return (
-            self.longitude,
-            self.latitude
+            self.latitude,
+            self.longitude            
         )
         
     def _is_mmsi_valid(self, mmsi: str) -> bool:
@@ -39,6 +39,12 @@ class ShipRow:
 
     def _is_valid_longitude(self, longitude: float) -> bool:
         return 5.0 < longitude < 35.0
+    
+    # def _is_valid_latitude(self, latitude: float) -> bool:
+    #     return -90.0 <= latitude <= 90.0
+
+    # def _is_valid_longitude(self, longitude: float) -> bool:
+    #     return -180.0 <= longitude <= 180.0
     
     # def _is_valid_latitude(self, latitude: int) -> bool:
     #     return -90 < latitude < 90
@@ -57,8 +63,19 @@ class ShipRow:
             self.nav_status, #New, added for anomaly B
             self.vessel_type #New, added for anomaly B
         )
-
-
+        
+    def _as_tuple_db(self):
+        return [
+            self.mmsi,
+            self.timestamp,
+            self.longitude,
+            self.latitude,
+            self.sog,
+            self.draught,
+            self.nav_status, #New, added for anomaly B
+            self.vessel_type #New, added for anomaly B
+        ]
+    
     def _as_tuple_db(self):
         return [
             self.mmsi,
