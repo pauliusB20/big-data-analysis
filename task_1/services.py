@@ -5,14 +5,14 @@ from collections import defaultdict
 from haversine import haversine
 from models import ShipRow
 from helper import DBHelper
+from config import Config
 
 def format_ts(ts: datetime) -> str:
     return ts.strftime('%Y-%m-%d %H:%M:%S')
 
-def run_anomaly_b(db_name: str, config):
+def run_anomaly_b(db_name: str, config: Config) -> None:
     db_helper = DBHelper()
-    all_loiter_windows = []
-    
+    all_loiter_windows = []    
     
     # We use a dict to group MMSI pings
     vessel_tracks = defaultdict(list)
@@ -43,8 +43,7 @@ def run_anomaly_b(db_name: str, config):
     findings = find_proximity_pairs(all_loiter_windows, config)
 
     # WRITE TO CSV
-    output_file = "anomalies_B.csv"
-    with open(output_file, "w", newline="") as f:
+    with open(config.RESULTS_ANOMALY_B, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
             "mmsi_1", "mmsi_2", "start", "end", 
@@ -57,7 +56,7 @@ def run_anomaly_b(db_name: str, config):
                 res['dur'], res['lat'], res['lon'], res['sog'], res['dist']
             ])
 
-def extract_loiters(history, windows, config):
+def extract_loiters(history, windows, config) -> None:
     """Identifies stationary periods for a single vessel."""
     w_start = None
     w_end = None
@@ -88,7 +87,7 @@ def extract_loiters(history, windows, config):
                 w_start = w_end = None
                 sog_sum = count = 0
 
-def find_proximity_pairs(windows, config):
+def find_proximity_pairs(windows, config) -> list[dict]:
     """Optimized latitude check"""
     # lat band (same for long) of 0.01 is around 1 km, so vhecks in this band
     LAT_BAND = 0.01 

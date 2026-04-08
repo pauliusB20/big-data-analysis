@@ -35,14 +35,9 @@ class Config:
     DFSI_W_JUMP       = 0.1
     HOUR_LIMIT_D = 5
     
-    # For importing and using config.py, example:
-    # from config import Config
-    # 
-    # config = Config()
-    # print(config.CHUNK_SIZE)
-
-    #--------------------------
+    # --------------------------
     # Config data for anomaly B
+    RESULTS_ANOMALY_B = "anomalies_B.csv"    
     SOG_THRESHOLD = 1.0
     B_HOURS = 2.0
     PROXIMITY_DIST = 0.5 # 500 meters max separation
@@ -77,3 +72,5 @@ class Config:
     ]
     NAUTICAL_MILES = 0.5399568
     
+    # ------------------------
+    RESULTS_ANOMALY_D = "anomaly_results.csv"
