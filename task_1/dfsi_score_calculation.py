@@ -44,10 +44,10 @@ if __name__ == "__main__":
     max_gap = anomaly_a.groupby("mmsi")["Time_Diff"].max()
 
 
-    Total_jumps = anomaly_d[["mmsi", "total_jump_nm"]]
+    total_jumps = anomaly_d[["mmsi", "total_jump_nm"]]
 
 
-    final_df = Total_jumps.merge(max_gap, left_on='mmsi', right_index=True, how='right')
+    final_df = total_jumps.merge(max_gap, left_on='mmsi', right_index=True, how='right')
     final_df = final_df.reset_index(drop=True)
 
 
