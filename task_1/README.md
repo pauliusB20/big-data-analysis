@@ -3,7 +3,7 @@ Summary of the Task 1 project files
 
 - profiling folder - Task 4 plots for analyzing memory usage and overhead
 
-  Note: To open .svg flamegraph use browser
+  Note: To open .svg flamegraph use browser (Chrome or Firefox)
 
 - config.py - script settings
 
