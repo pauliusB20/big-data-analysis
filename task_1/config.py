@@ -14,7 +14,7 @@ class Config:
     DB_TABLE = "AIS_TABLE"
     CSV_FILE_SOURCE = [
         "aisdk-2025-02-28.csv",
-        # "aisdk-2025-03-01.csv"
+        "aisdk-2025-03-01.csv"
     ]
     
     
@@ -45,3 +45,4 @@ class Config:
     WORKERS_C_RESULT_FILE = "anomaly_c_draught.csv"
     HOUR_LIMIT = 2
     LOG_EVERY_C = 1000
+    IGNORE_TYPES_C = ["Passenger"]
