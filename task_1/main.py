@@ -14,7 +14,7 @@ import numpy as np
 import csv
 import os            
 
-from anomaly_B import run_anomaly_b #module for B
+from anomaly_B_final import run_anomaly_b #module for B
 
 
 
