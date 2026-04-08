@@ -74,35 +74,97 @@ class AISWorkerC:
         AIS Worker for anomaly C
         detection
     """
+    @staticmethod
+    def _get_draught_rate(previous: ShipRow, next: ShipRow) -> float:
+        draught_change_rate = abs(next.draught - previous.draught) / previous.draught
+        return draught_change_rate
+    
     
     @staticmethod
-    def process(chunk: list[tuple]) -> tuple[int, int]:
-        config = Config()
+    def _get_hour_gap(previous: ShipRow, next: ShipRow) -> float:
         db_helper = DBHelper()
+        previous_timestamp = datetime.strptime(previous.timestamp, "%Y-%m-%d %H:%M:%S")
+        next_timestamp = datetime.strptime(next.timestamp, "%Y-%m-%d %H:%M:%S")
+        difference_seconds = db_helper._get_time_diff(previous_timestamp, next_timestamp)
+        difference_hours = (difference_seconds / 3600)
+        return difference_hours    
+    
+    @staticmethod
+    def process(args: tuple) -> tuple[int, int]:
+        chunk, coastal_buffer = args
+        config = Config()
+        loc_helper = LocationHelper()
+        db_helper = DBHelper()
+        
         size = len(chunk)
         pid = os.getpid()
         total_written = 0
         
-        with open(config.WORKERS_C_RESULT_FILE, "a", newline="") as writer:
-            writer_csv = csv.writer(writer)
+        if size == 0:
+            return pid, 0 
+        
+        results_file_exists = os.path.exists(config.WORKERS_C_RESULT_FILE)
+        
+        
             
-            for i in range(1, size):
-                previous = ShipRow(*chunk[i - 1])
-                current = ShipRow(*chunk[i])
-                
-                if previous.mmsi == current.mmsi:
-                    draught_change_rate = abs(current.draught - previous.draught) / previous.draught
+        for i in range(1, size):
+            previous = ShipRow(*chunk[i - 1])
+            current = ShipRow(*chunk[i])
+            
+            if previous.mmsi != current.mmsi:
+                continue
+            
+            if previous.draught <= 0 or current.draught <= 0:
+                continue
+            
+            if previous.ship_type in config.IGNORE_TYPES_C and current.ship_type in config.IGNORE_TYPES_C:
+                continue
+            
+            draught_change_rate = AISWorkerC._get_draught_rate(previous, current)
+            difference_hours = AISWorkerC._get_hour_gap(previous, current)
+            distance = haversine(previous.point, current.point, Unit.KILOMETERS)
+            
+            speed_knot = 0
+            if distance > 0 and difference_hours > 0:
+                speed_knot = (distance/difference_hours)
+            
+            if draught_change_rate < 0.05:
+                continue
+            
+            if speed_knot > 0.5:
+                continue
+            
+            if difference_hours <= 2:
+                continue
+            
+            is_open_sea = loc_helper.is_outside_buffer(
+                previous.latitude, 
+                previous.longitude, 
+                coastal_buffer
+            )
+            if not is_open_sea:
+                continue  
+            
+            with open(config.WORKERS_C_RESULT_FILE, "a", newline="") as writer:
+                writer_csv = csv.writer(writer)
+                if not results_file_exists:
+                    writer_csv.writerow(config.CONFIG_FIELDS_C)
+                    results_file_exists = os.path.exists(config.WORKERS_C_RESULT_FILE)
+                row_new = [
+                    datetime.strptime(previous.timestamp, "%Y-%m-%d %H:%M:%S"),
+                    previous.latitude,
+                    previous.longitude,
+                    datetime.strptime(current.timestamp, "%Y-%m-%d %H:%M:%S"),
+                    current.latitude,
+                    current.longitude,
+                    db_helper._get_nautical_miles(distance), # to neutical miles,
+                    difference_hours,
+                    draught_change_rate
+                ]
                     
-                    previous_timestamp = datetime.strptime(previous.timestamp, "%Y-%m-%d %H:%M:%S")
-                    current_timestamp = datetime.strptime(current.timestamp, "%Y-%m-%d %H:%M:%S")
-                    
-                    difference_seconds = db_helper._get_time_diff(previous_timestamp, current_timestamp)
-                    # difference_hours = (difference_seconds / 3600)
-                    if draught_change_rate >= 0.05 and difference_seconds > 7200:
-                        # saving anomaly
-                        writer_csv.writerow(previous._as_tuple_db())
-                        writer_csv.writerow(current._as_tuple_db())
-                        total_written += 1      
+                # saving anomaly
+                writer_csv.writerow(row_new)
+            total_written += 1      
                 
         return pid, total_written
 

@@ -19,7 +19,6 @@ import os
 import geopandas as gpd
 from shapely.geometry import Point, box
 
-
         
 class FileReader:
     
@@ -47,6 +46,9 @@ class FileReader:
             latitude_idx = headline.index("Latitude")
             sog_idx = headline.index("SOG")
             draught_idx = headline.index("Draught")
+            cargo_type_idx = headline.index("Cargo type")
+            ship_type_idx = headline.index("Ship type")
+            
             nav_status_idx = headline.index("Navigational status") #added for anomaly B
             type_idx = headline.index("Type of mobile") #added for anomaly B 
 
@@ -70,6 +72,8 @@ class FileReader:
                         not row[mmsi_idx] or
                         not row[sog_idx] or
                         not row[draught_idx] or
+                        not row[cargo_type_idx] or 
+                        not row[ship_type_idx] or
                         not row[nav_status_idx] or 
                         not row[type_idx]
                     ):
@@ -80,6 +84,8 @@ class FileReader:
                     latitude = np.float32(row[latitude_idx])
                     sog = np.float32(row[sog_idx])
                     draught = np.float32(row[draught_idx])
+                    cargo_type = row[cargo_type_idx]
+                    ship_type = row[ship_type_idx]
                     nav_status = str(row[nav_status_idx])
                     vessel_type = str(row[type_idx])
                     
@@ -90,6 +96,8 @@ class FileReader:
                         latitude=latitude,
                         sog=sog,
                         draught=draught,
+                        cargo_type=cargo_type,
+                        ship_type=ship_type,
                         nav_status=nav_status, #New, added for anomaly B
                         vessel_type=vessel_type #New, added for anomaly B
                     ) 
@@ -112,6 +120,10 @@ class DBHelper:
     def _get_time_diff(self, datetime_a: datetime, datetime_b: datetime) -> int:
         difference = (datetime_b - datetime_a).total_seconds() 
         return int(difference)
+    
+    def _get_nautical_miles(self, dist_km: float) -> float:
+        dist_nm = dist_km * self.config.NAUTICAL_MILES
+        return float(dist_nm)    
         
     def _get_record_limit(self, db_name: str) -> int:
         """
@@ -154,7 +166,7 @@ class DBHelper:
             cursor = conn.cursor()
 
             cursor.execute(
-                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY MMSI, timestamp"
+                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY CAST(MMSI AS BIGINT), timestamp"
             )
 
             while True:
@@ -400,7 +412,8 @@ class LocationHelper:
     """
     A utility class for geographic spatial filtering in maritime analysis.
     """
-
+    
+    
     @staticmethod
     def create_coastal_buffer(coastline_path, nm_distance=12):
         """
@@ -427,7 +440,6 @@ class LocationHelper:
 
 
         analysis_region = box(5.0, 50.0, 35.0, 70.0)
-
 
         regional_coast = world.clip(analysis_region)
 
