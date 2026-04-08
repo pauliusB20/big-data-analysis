@@ -48,3 +48,16 @@ class Config:
     HOUR_LIMIT = 2
     LOG_EVERY_C = 1000
     IGNORE_TYPES_C = ["Passenger"]
+    CONFIG_FIELDS_C = [
+        "previous_timestamp",
+        "previous_lat",
+        "previous_long", 
+        "next_timestamp",
+        "next_lat",
+        "next_long",
+        "dist_jump_nm",
+        "gap_in_hours",
+        "draft_change_rate",
+    ]
+    NAUTICAL_MILES = 0.5399568
+    

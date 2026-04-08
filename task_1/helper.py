@@ -19,7 +19,6 @@ import os
 import geopandas as gpd
 from shapely.geometry import Point, box
 
-
         
 class FileReader:
     
@@ -112,6 +111,10 @@ class DBHelper:
     def _get_time_diff(self, datetime_a: datetime, datetime_b: datetime) -> int:
         difference = (datetime_b - datetime_a).total_seconds() 
         return int(difference)
+    
+    def _get_nautical_miles(self, dist_km: float) -> float:
+        dist_nm = dist_km * self.config.NAUTICAL_MILES
+        return float(dist_nm)    
         
     def _get_record_limit(self, db_name: str) -> int:
         """
@@ -154,7 +157,7 @@ class DBHelper:
             cursor = conn.cursor()
 
             cursor.execute(
-                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY MMSI, timestamp"
+                f"SELECT * FROM {self.config.DB_TABLE} ORDER BY CAST(MMSI AS BIGINT), timestamp"
             )
 
             while True:
@@ -398,7 +401,8 @@ class LocationHelper:
     """
     A utility class for geographic spatial filtering in maritime analysis.
     """
-
+    
+    
     @staticmethod
     def create_coastal_buffer(coastline_path, nm_distance=12):
         """
@@ -411,7 +415,6 @@ class LocationHelper:
 
 
         analysis_region = box(5.0, 50.0, 35.0, 70.0)
-
 
         regional_coast = world.clip(analysis_region)
 
