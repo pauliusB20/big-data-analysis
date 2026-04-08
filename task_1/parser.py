@@ -26,7 +26,7 @@ class AISWorker:
                 INSERT 
                 INTO 
                 {config.DB_TABLE} 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)             
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)         
             """, chunk)
             connection.commit()
     
@@ -101,7 +101,9 @@ class AISParser:
                         sog REAL,
                         draught REAL,
                         cargo_type VARCHAR(100),
-                        ship_type VARCHAR(100)
+                        ship_type VARCHAR(100),
+                        nav_status VARCHAR(100),
+                        vessel_type VARCHAR(100)
                     )
                     """
                 )
@@ -138,4 +140,4 @@ def run_ais_parsers(config: Config) -> None:
             workers=config.WORKERS
         )
         parser.initialize_db_start()
-        parser.run()
+        parser.run() 

@@ -44,6 +44,7 @@ class AISWorkerA:
                 if not is_open_sea:
                     continue
 
+                
                 from_dt = datetime.fromisoformat(previous.timestamp)
                 to_dt = datetime.fromisoformat(current.timestamp)
                 difference_hours = (to_dt - from_dt).total_seconds() / 3600
@@ -59,7 +60,7 @@ class AISWorkerA:
                 seen_mmsis.add(previous.mmsi)
 
         if Going_dark:
-            
+
             Going_dark.sort(key=lambda ship: (ship.mmsi, ship.timestamp))
             rows_to_write = [ship._as_tuple_db() for ship in Going_dark]
             with open(config.WRITE_TO_FILE_A, "a", newline='') as writer:

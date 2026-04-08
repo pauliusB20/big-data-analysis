@@ -19,7 +19,8 @@ from workers import AISWorkerC, AISWorkerD, AISWorkerA
 from tqdm import tqdm
 import numpy as np
 import csv
-import os
+import os            
+from anomaly_B import run_anomaly_b #module for B
 from pathlib import Path
 import haversine as hs
 from helper import LocationHelper
@@ -29,9 +30,17 @@ def _run_anomaly_a_analysis(config: Config) -> None:
     """
     Anomaly A analysis
     """
+
     file_path = Path(config.WRITE_TO_FILE_A)
 
-    # 1. Initialize the buffer once
+    if file_path.exists():
+        file_path.unlink()
+        print(f"Successfully deleted {config.WRITE_TO_FILE_A}")
+    else:
+        print(f"The file {config.WRITE_TO_FILE_A} does not exist.")
+
+
+
     helper = LocationHelper()
     coastal_buffer = helper.create_coastal_buffer(config.COSTAL_FILE, nm_distance=12)
 
@@ -77,8 +86,15 @@ def _run_anomaly_b_analysis(config: Config) -> None:
     """
     Anomaly B analysis
     """
+    print("\n--- Running Anomaly B ---")
 
-    # TODO: Anomaly B detection
+    for file_name in config.CSV_FILE_SOURCE:
+        db_name = DBHelper._get_db_from_file_name(file_name)
+
+        print(f"Processing DB: {db_name}")
+
+        run_anomaly_b(db_name, config)
+    
     pass
 
 
@@ -147,7 +163,6 @@ def _run_anomaly_c_analysis(config: Config) -> None:
     print(f"Total execution time: {execution_total}")
     print("-----DONE---------")
     
-
 
 def _run_anomaly_d_analysis(config: Config) -> None:
     """
@@ -220,12 +235,7 @@ def run_anomaly_analysis(config: Config) -> None:
     _run_anomaly_a_analysis(config)
     _run_anomaly_b_analysis(config)
     _run_anomaly_c_analysis(config)
-    _run_anomaly_d_analysis(config)    
-    _run_cleanup_process(config)
-    
-    end_time = datetime.now()
-    total_seconds = (end_time - start_time).total_seconds()
-    print(f"Total execution: {total_seconds}s")
+    _run_anomaly_d_analysis(config)
 
 
 if __name__ == "__main__":
@@ -248,7 +258,7 @@ if __name__ == "__main__":
         run_ais_parsers(config)
     
     run_anomaly_analysis(config)
-    
+
     
     end_time = datetime.now()
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
