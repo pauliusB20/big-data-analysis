@@ -40,14 +40,16 @@ class FileReader:
             csv_reader = csv.reader(reader)
             headline = next(csv_reader)
             
-            # columns to select
+            # columns to select 
             mmsi_idx = headline.index("MMSI")
             timestamp_idx = headline.index("# Timestamp")
             longitude_idx = headline.index("Longitude")
             latitude_idx = headline.index("Latitude")
             sog_idx = headline.index("SOG")
             draught_idx = headline.index("Draught")
-            
+            nav_status_idx = headline.index("Navigational status") #added for anomaly B
+            type_idx = headline.index("Type of mobile") #added for anomaly B 
+
             for row in csv_reader:
                 
                 if len(chunk) > self.chunk_size:
@@ -67,7 +69,9 @@ class FileReader:
                         not row[latitude_idx] or
                         not row[mmsi_idx] or
                         not row[sog_idx] or
-                        not row[draught_idx]
+                        not row[draught_idx] or
+                        not row[nav_status_idx] or 
+                        not row[type_idx]
                     ):
                         continue
                          
@@ -76,6 +80,8 @@ class FileReader:
                     latitude = np.float32(row[latitude_idx])
                     sog = np.float32(row[sog_idx])
                     draught = np.float32(row[draught_idx])
+                    nav_status = str(row[nav_status_idx])
+                    vessel_type = str(row[type_idx])
                     
                     new_row = ShipRow(
                         mmsi=mmsi,
@@ -83,8 +89,10 @@ class FileReader:
                         longitude=longitude,
                         latitude=latitude,
                         sog=sog,
-                        draught=draught
-                    )
+                        draught=draught,
+                        nav_status=nav_status, #New, added for anomaly B
+                        vessel_type=vessel_type #New, added for anomaly B
+                    ) 
                     chunk.append(new_row)
                 
                 except Exception as exception:
@@ -348,14 +356,16 @@ class DBHelper:
                     longitude REAL,
                     latitude REAL,
                     sog REAL,
-                    draught REAL
+                    draught REAL,
+                    nav_status VARCHAR(100),
+                    vessel_type VARCHAR(100)
                 )            
             """)
             
             cursor.executemany(
                 f"""
                 INSERT INTO {table}
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?) 
                 """,
                 records
             )

@@ -19,7 +19,8 @@ from workers import AISWorkerC, AISWorkerD, AISWorkerA
 from tqdm import tqdm
 import numpy as np
 import csv
-import os
+import os            
+from anomaly_B import run_anomaly_b #module for B
 from pathlib import Path
 import haversine as hs
 from helper import LocationHelper
@@ -85,8 +86,15 @@ def _run_anomaly_b_analysis(config: Config) -> None:
     """
     Anomaly B analysis
     """
+    print("\n--- Running Anomaly B ---")
 
-    # TODO: Anomaly B detection
+    for file_name in config.CSV_FILE_SOURCE:
+        db_name = DBHelper._get_db_from_file_name(file_name)
+
+        print(f"Processing DB: {db_name}")
+
+        run_anomaly_b(db_name, config)
+    
     pass
 
 
@@ -220,10 +228,9 @@ if __name__ == "__main__":
         "-------------------"
     )
     
-
     run_ais_parsers(config)
     run_anomaly_analysis(config)
-    
+
     
     end_time = datetime.now()
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
