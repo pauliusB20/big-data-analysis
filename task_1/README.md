@@ -1,6 +1,8 @@
 
 Summary of the Task 1 project files
 
+- Task_1_presentation_slides.pdf - slides for the assignment 1 defence
+
 - profiling folder - Task 4 plots for analyzing memory usage and overhead
 
   Note: To open .svg flamegraph use browser (Chrome or Firefox)
