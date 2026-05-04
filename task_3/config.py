@@ -1,0 +1,8 @@
+
+# Reader config
+CSV_FILE = "aisk-2026-04-18.csv"
+CHUNK_SIZE = 1000
+TAKS_PER_WORKER = 3
+LOG_EVERY = 10
+WORKERS = 6
+    
