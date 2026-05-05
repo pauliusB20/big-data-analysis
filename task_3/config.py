@@ -1,8 +1,9 @@
-
 # Reader config
-CSV_FILE = "aisk-2026-04-18.csv"
+CSV_FILE = "aisdk-2026-04-18.csv"
 CHUNK_SIZE = 1000
 TAKS_PER_WORKER = 3
 LOG_EVERY = 10
-WORKERS = 6
-    
+WORKERS = 4
+MONGO_URI = "mongodb://127.0.0.1:30000/?serverSelectionTimeoutMS=60000&connectTimeoutMS=60000"
+MONGO_DB = "AIS_04_18"
+MONGO_COLLECTION = "data"
