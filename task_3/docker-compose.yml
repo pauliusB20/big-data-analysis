@@ -1,86 +1,191 @@
-services:
-  mongo_1_config:
-    image: mongo
-    container_name: mg_db_1
-    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
-    ports:
-      - "3333:27017"
-    volumes:
-      - mongo_1_config:/data/db
+  services:
+    mongo_1_config:
+      image: mongo
+      command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - "3333:27017"
+      volumes:
+        - mongo_1_config:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  mongo_2_config:
-    image: mongo
-    container_name: mg_db_2
-    restart: unless-stopped
-    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
-    ports:
-      - "3334:27017"
-    volumes:
-      - mongo_2_config:/data/db
+    mongo_2_config:
+      image: mongo
+      restart: unless-stopped
+      command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - "3334:27017"
+      volumes:
+        - mongo_2_config:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  mongo_3_config:
-    image: mongo
-    container_name: mg_db_3
-    restart: unless-stopped
-    command: mongod --configsvr --replSet cfgrs --port 27017 --dbpath /data/db
-    ports:
-      - "3335:27017"
-    volumes:
-      - mongo_3_config:/data/db
+    mongo_3_config:
+      image: mongo
+      restart: unless-stopped
+      command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - "3335:27017"
+      volumes:
+        - mongo_3_config:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  shard1s1:
-    container_name: shard1s1
-    image: mongo
-    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
-    ports:
-      - 20001:27017
-    volumes:
-      - shard1s1:/data/db
+    # shard 1
+    shard1s1:
+      image: mongo
+      command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20001:27017
+      volumes:
+        - shard1s1:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  shard1s2:
-    container_name: shard1s2
-    image: mongo
-    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
-    ports:
-      - 20002:27017
-    volumes:
-      - shard1s2:/data/db
+    shard1s2:
+      image: mongo
+      command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20002:27017
+      volumes:
+        - shard1s2:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  shard1s3:
-    container_name: shard1s3
-    image: mongo
-    command: mongod --shardsvr --replSet shard1rs --port 27017 --dbpath /data/db
-    ports:
-      - 20003:27017
-    volumes:
-      - shard1s3:/data/db
+    shard1s3:
+      image: mongo
+      command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20003:27017
+      volumes:
+        - shard1s3:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  mongos:
-    container_name: mongos
-    image: mongo
-    command: mongos --configdb cfgrs/mg_db_1:27017,mg_db_2:27017,mg_db_3:27017 --bind_ip 0.0.0.0 --port 27017
-    ports:
-      - 30000:27017
+    # shard 2
+    shard2s1:
+      image: mongo
+      command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20004:27017
+      volumes:
+        - shard2s1:/data/db
+      
+      networks:
+        - mongo-cluster
 
-  init-config:
-    image: mongo
-    container_name: init-config
-    depends_on:
-      - mongo_1_config
-      - mongo_2_config
-      - mongo_3_config
-      - shard1s1
-      - shard1s2
-      - shard1s3
-      - mongos
-    volumes:
-      - ./cluster-init.sh:/init.sh
-    entrypoint: ["/bin/sh", "/init.sh"]
+    shard2s2:
+      image: mongo
+      command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20005:27017
+      volumes:
+        - shard2s2:/data/db
+      
+      networks:
+        - mongo-cluster
 
-volumes:
-  mongo_1_config:
-  mongo_2_config:
-  mongo_3_config:
-  shard1s1:
-  shard1s2:
-  shard1s3:
+    shard2s3:
+      image: mongo
+      command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20006:27017
+      volumes:
+        - shard2s3:/data/db
+      
+      networks:
+        - mongo-cluster
+
+    # shard 3
+    shard3s1:
+      image: mongo
+      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20007:27017
+      volumes:
+        - shard3s1:/data/db
+      
+      networks:
+        - mongo-cluster
+
+    shard3s2:
+      image: mongo
+      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20008:27017
+      volumes:
+        - shard3s2:/data/db
+      
+      networks:
+        - mongo-cluster
+
+    shard3s3:
+      image: mongo
+      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
+      ports:
+        - 20009:27017
+      volumes:
+        - shard3s3:/data/db
+      
+      networks:
+        - mongo-cluster
+
+    mongos:
+      image: mongo
+      ports:
+        - 30000:27017
+
+      volumes:
+        - ./mongos-entrypoint.sh:/mongos-entrypoint.sh
+
+      entrypoint: ["/bin/sh", "/mongos-entrypoint.sh"]
+
+      networks:
+        - mongo-cluster
+      
+
+    init-config:
+      image: mongo
+      depends_on:
+        - mongo_1_config
+        - mongo_2_config
+        - mongo_3_config
+        - shard1s1
+        - shard1s2
+        - shard1s3
+        - shard2s1
+        - shard2s2
+        - shard2s3
+        - shard3s1
+        - shard3s2
+        - shard3s3
+        - mongos
+      volumes:
+        - ./cluster-init.sh:/init.sh
+      entrypoint: ["/bin/sh", "/init.sh"]
+
+      networks:
+        - mongo-cluster
+
+  volumes:
+    mongo_1_config:
+    mongo_2_config:
+    mongo_3_config:
+    shard1s1:
+    shard1s2:
+    shard1s3:
+    shard2s1:
+    shard2s2:
+    shard2s3:
+    shard3s1:
+    shard3s2:
+    shard3s3:
+
+  networks:
+    mongo-cluster:
