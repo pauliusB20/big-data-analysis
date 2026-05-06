@@ -20,3 +20,17 @@ class ShipRow:
     ship_type: str
     nav_status: str #New, added for anomaly B
     vessel_type: str #New, added for anomaly B
+    
+    def _get_doc(self) -> dict:
+        return {
+            "mmsi":        self.mmsi,
+            "timestamp":   self.timestamp,
+            "longitude":   float(self.longitude),
+            "latitude":    float(self.latitude),
+            "sog":         float(self.sog),
+            "draught":     float(self.draught),
+            "cargo_type":  self.cargo_type,
+            "ship_type":   self.ship_type,
+            "nav_status":  self.nav_status,
+            "vessel_type": self.vessel_type,
+        }
