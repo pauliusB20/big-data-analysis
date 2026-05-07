@@ -3,21 +3,20 @@ from pymongo import MongoClient, errors
 from multiprocessing import Pool
 from helper import FileReader
 from datetime import datetime
-from models import ShipRow
 import os, sys
 import config
 
 _worker_client: MongoClient = None
 _worker_collection: Collection = None
 
-def _get_collection():
+def _get_mongo_collection():
     """Return a cached collection handle for this worker process."""
     global _worker_client, _worker_collection
     if not _worker_client and not _worker_collection:
         _worker_client = MongoClient(
             config.MONGO_URI,
             # Limit the per-process pool so N workers don't overwhelm Mongo.
-            maxPoolSize=2,
+            maxPoolSize=config.MONGO_CONNECTIONS,
             # Surface connection problems quickly rather than hanging.
             serverSelectionTimeoutMS=10_000,
             socketTimeoutMS=30_000,
@@ -28,11 +27,10 @@ def _get_collection():
     return _worker_collection
 
 def insert_chunk_to_mongo(chunk: list[dict]) -> None:
-    # docs = [row._get_doc() for row in chunk]
     if not chunk:
         return
     try:
-        collection = _get_collection()
+        collection = _get_mongo_collection()
         collection.insert_many(chunk, ordered=False)
     except errors.BulkWriteError as bwe:
         n_errors = len(bwe.details.get("writeErrors", []))
@@ -40,7 +38,7 @@ def insert_chunk_to_mongo(chunk: list[dict]) -> None:
     except Exception as exc:
         # Catch unexpected errors so the worker reports them instead of dying silently.
         print(f"[PID {os.getpid()}] Unexpected error: {exc!r}")
-        raise  # Re-raise so imap_unordered surfaces it in the main process.
+        raise Exception("Something went wrong")  
 
 
 def process_file_chunk(chunk: list[dict]) -> tuple[int, int]:
@@ -62,7 +60,9 @@ def _test_mongo_connection() -> None:
         sys.exit(f"ERROR: Received error while testing: {str(error)}")
         
 
-
+def _is_db_full() -> bool:
+    return _worker_collection.count_documents({}) > 0       
+    
 def run_ais_db_insert() -> None:
     task_counts = 0
     total_rows = 0
@@ -97,9 +97,43 @@ def run_ais_db_insert() -> None:
 
     print(f"[MAIN] Done. Total chunks: {task_counts}, total rows: {total_rows:,}")
 
+def _show_execution_statistics(start_time: datetime, end_time: datetime) -> None:
+    total_execution_seconds = (end_time - start_time).seconds
+    total_execution_minutes_raw = total_execution_seconds / 60
+    seconds_part = total_execution_minutes_raw % 1
+    total_exec_sec = 60 * seconds_part
+    total_exec_min = int(total_execution_minutes_raw)
+    
+    print(
+        f"Total execution: {total_exec_min} minutes"
+        f"{total_exec_sec} seconds"
+    )
 
 if __name__ == "__main__":
     
+    print("Starting AIS_DATA analysis tool...")
+    start_time = datetime.now()
+    start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Program start time: {start_time_str}")
+    
     _test_mongo_connection()
     
-    run_ais_db_insert()
+    if not _is_db_full():
+        print("Loading data from dataset file and inserting into mongodb...")
+        run_ais_db_insert()
+        
+    
+    # Data analysis part for analyzing records
+    # code for task 3.3 and task 3.4 goes here
+    
+    
+    # ------------------
+    
+    end_time = datetime.now()
+    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"Program start time: {start_time_str}")
+    print(f"Program end time: {end_time_str}")
+    
+    _show_execution_statistics(start_time, end_time)
+    
+    print("DONE")
