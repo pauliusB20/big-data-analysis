@@ -53,7 +53,7 @@ class FileReader:
             for row in csv_reader:
                 
                 if len(chunk) > self.chunk_size:
-                    yield {self.file_path : chunk}
+                    yield chunk
                     chunk = []
                 
                 timestamp = row[timestamp_idx]
@@ -87,10 +87,10 @@ class FileReader:
                         nav_status=nav_status, #New, added for anomaly B
                         vessel_type=vessel_type #New, added for anomaly B
                     ) 
-                    chunk.append(new_row)
+                    chunk.append(new_row._get_doc())
                 
                 except Exception as exception:
                     continue
                 
         if chunk:
-            yield {self.file_path : chunk}
+            yield chunk
