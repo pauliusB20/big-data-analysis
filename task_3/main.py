@@ -3,71 +3,56 @@ from pymongo import MongoClient, errors
 from multiprocessing import Pool
 from helper import FileReader
 from datetime import datetime
+from db import MongoHelper
 import os, sys
 import config
 
-_worker_client: MongoClient = None
-_worker_collection: Collection = None
 
-def _get_mongo_collection():
-    """Return a cached collection handle for this worker process."""
-    global _worker_client, _worker_collection
-    if not _worker_client and not _worker_collection:
-        _worker_client = MongoClient(
-            config.MONGO_URI,
-            # Limit the per-process pool so N workers don't overwhelm Mongo.
-            maxPoolSize=config.MONGO_CONNECTIONS,
-            # Surface connection problems quickly rather than hanging.
-            serverSelectionTimeoutMS=10_000,
-            socketTimeoutMS=30_000,
-            compressors="snappy,zstd,zlib",
-        )
-        _worker_collection = _worker_client[config.MONGO_DB][config.MONGO_COLLECTION]
+mongo_helper: MongoHelper = None
 
-    return _worker_collection
-
-def insert_chunk_to_mongo(chunk: list[dict]) -> None:
-    if not chunk:
-        return
-    try:
-        collection = _get_mongo_collection()
-        collection.insert_many(chunk, ordered=False)
-    except errors.BulkWriteError as bwe:
-        n_errors = len(bwe.details.get("writeErrors", []))
-        print(f"[PID {os.getpid()}] BulkWriteError: {n_errors} doc(s) failed.")
-    except Exception as exc:
-        # Catch unexpected errors so the worker reports them instead of dying silently.
-        print(f"[PID {os.getpid()}] Unexpected error: {exc!r}")
-        raise Exception("Something went wrong")  
-
+def init_worker():
+    global mongo_helper
+    mongo_helper = MongoHelper()
 
 def process_file_chunk(chunk: list[dict]) -> tuple[int, int]:
     """Returns (pid, rows_processed) for progress tracking."""
     pid = os.getpid()
-    insert_chunk_to_mongo(chunk)
+    
+    # performing data insert
+    try:
+        mongo_helper.add_to_db(chunk)
+        
+    except errors.BulkWriteError as bwe:
+        n_errors = len(bwe.details.get("writeErrors", []))
+        print(f"[PID {os.getpid()}] BulkWriteError: {n_errors} doc(s) failed.")
+    
+    except Exception as exc:
+        # Catch unexpected errors so the worker reports them instead of dying silently.
+        print(f"[PID {os.getpid()}] Unexpected error: {exc!r}")
+        raise Exception("Something went wrong")
 
     return pid, len(chunk)
 
-def _test_mongo_connection() -> None:
+def _test_mongo_connection() -> MongoHelper:
     print("INFO: Testing mongodb cluster connection before insert")
     try:
-        MongoClient(
-            config.MONGO_URI,
-        )
+        mongo_helper = MongoHelper()
+        mongo_helper._worker_client.admin.command("ping")
         print(f"SUCCESS: Conneced to {config.MONGO_URI}")
-        
+    
     except Exception as error:
         sys.exit(f"ERROR: Received error while testing: {str(error)}")
         
-
-def _is_db_full() -> bool:
-    return _worker_collection.count_documents({}) > 0       
     
 def run_ais_db_insert() -> None:
     task_counts = 0
     total_rows = 0
 
-    with Pool(processes=config.WORKERS,  maxtasksperchild=10) as parser_pool:
+    with Pool(
+        processes=config.WORKERS,  
+        maxtasksperchild=10,
+        initializer=init_worker
+    ) as parser_pool:
         file_reader = FileReader(
             file_path=config.CSV_FILE,
             chunk_size=config.CHUNK_SIZE,
@@ -101,11 +86,11 @@ def _show_execution_statistics(start_time: datetime, end_time: datetime) -> None
     total_execution_seconds = (end_time - start_time).seconds
     total_execution_minutes_raw = total_execution_seconds / 60
     seconds_part = total_execution_minutes_raw % 1
-    total_exec_sec = 60 * seconds_part
+    total_exec_sec = round(60 * seconds_part, 2)
     total_exec_min = int(total_execution_minutes_raw)
     
     print(
-        f"Total execution: {total_exec_min} minutes"
+        f"Total execution: {total_exec_min} minutes "
         f"{total_exec_sec} seconds"
     )
 
@@ -116,13 +101,13 @@ if __name__ == "__main__":
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Program start time: {start_time_str}")
     
-    _test_mongo_connection()
+    mongo_helper = _test_mongo_connection()
     
-    if not _is_db_full():
+    mongo_helper = MongoHelper()
+    if not mongo_helper._is_db_full():
         print("Loading data from dataset file and inserting into mongodb...")
         run_ais_db_insert()
         
-    
     # Data analysis part for analyzing records
     # code for task 3.3 and task 3.4 goes here
     
