@@ -1,53 +1,52 @@
-#!/bin/bash
-
-retries_shards_add=30
-
+#!/bin/sh
 set -e
 
-echo "Waiting for config server..."
-
-until mongosh --host mg_db_1:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null | grep 1 >/dev/null; do
+echo "Waiting for config servers to start..."
+until mongosh --host mongo_1_config:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null; do
   sleep 2
 done
 
-echo "Initializing config replica set (if needed)..."
-
-mongosh --host mg_db_1:27017 --quiet <<EOF
+echo "Initializing config replica set..."
+mongosh --host mongo_1_config:27017 --quiet <<EOF
 try {
   rs.status()
-  print("Config RS already initialized")
+  print("cfgrs already initialized")
 } catch (e) {
   rs.initiate({
     _id: "cfgrs",
     configsvr: true,
     members: [
-      { _id: 0, host: "mg_db_1:27017" },
-      { _id: 1, host: "mg_db_2:27017" },
-      { _id: 2, host: "mg_db_3:27017" }
+      { _id: 0, host: "mongo_1_config:27017" },
+      { _id: 1, host: "mongo_2_config:27017" },
+      { _id: 2, host: "mongo_3_config:27017" }
     ]
   })
 }
 EOF
 
-echo "Waiting for config PRIMARY..."
+echo "Waiting for cfgrs PRIMARY..."
 
-until mongosh --host mg_db_1:27017 --quiet --eval "db.hello().isWritablePrimary" | grep true >/dev/null; do
+until mongosh --host mongo_1_config:27017 --quiet --eval \
+'rs.status().members.some(m => m.stateStr == "PRIMARY")' \
+2>/dev/null | grep -q true; do
+  sleep 2
+done
+
+echo "Waiting for shard servers to start..."
+until mongosh --host shard1s1:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null; do
+  sleep 2
+done
+
+until mongosh --host shard2s1:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null; do
   sleep 2
 done
 
 
-echo "Waiting for shard server..."
-
-until mongosh --host shard1s1:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null | grep 1 >/dev/null; do
-  sleep 2
-done
-
-echo "Initializing shard replica set (if needed)..."
-
+echo "Initializing shard shard1s replica set..."
 mongosh --host shard1s1:27017 --quiet <<EOF
 try {
   rs.status()
-  print("Shard RS already initialized")
+  print("shard1rs already initialized")
 } catch (e) {
   rs.initiate({
     _id: "shard1rs",
@@ -60,71 +59,84 @@ try {
 }
 EOF
 
-echo "Waiting for shard PRIMARY..."
+echo "Waiting for shard1rs PRIMARY..."
 
-until mongosh --host shard1s1:27017 --quiet --eval "db.hello().isWritablePrimary" | grep true >/dev/null; do
+until mongosh --host shard1s1:27017 --quiet --eval \
+'rs.status().members.some(m => m.stateStr == "PRIMARY")' \
+2>/dev/null | grep -q true; do
   sleep 2
 done
 
-
-echo "Waiting for mongos..."
-
-until mongosh --host mongos:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null | grep 1 >/dev/null; do
-  sleep 2
-done
-
-echo "Adding shard (retry with limit)..."
-
-until mongosh --host mongos:27017 --quiet <<EOF
+echo "Initializing shard shard2rs replica set..."
+mongosh --host shard2s1:27017 --quiet <<EOF
 try {
-  const shards = sh.status().shards.map(s => s._id)
-  if (!shards.includes("shard1rs")) {
-    sh.addShard("shard1rs/shard1s1:27017,shard1s2:27017,shard1s3:27017")
-    print("Shard added")
-  } else {
-    print("Shard already exists")
-  }
+  rs.status()
+  print("shard2rs already initialized")
 } catch (e) {
-  throw e
+  rs.initiate({
+    _id: "shard2rs",
+    members: [
+      { _id: 0, host: "shard2s1:27017" },
+      { _id: 1, host: "shard2s2:27017" },
+      { _id: 2, host: "shard2s3:27017" }
+    ]
+  })
 }
 EOF
-do
-  retries_shards_add=$((retries_shards_add-1))
 
-  if [ "$retries_shards_add" -le 0 ]; then
-    echo "Failed to add shard after multiple attempts"
-    exit 1
-  fi
+echo "Waiting for shard2rs PRIMARY..."
 
-  echo "Retrying shard add... ($retries_shards_add left)"
-  sleep 3
+until mongosh --host shard2s1:27017 --quiet --eval \
+'rs.status().members.some(m => m.stateStr == "PRIMARY")' \
+2>/dev/null | grep -q true; do
+  sleep 2
 done
 
-echo "Adding AIS database with sharding"
 
+echo "Waiting for mongos to be ready..."
+until mongosh --host mongos:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null; do
+  sleep 2
+done
+
+echo "Adding Shard to Cluster..."
+# Simplified: attempt to add shard; catch error if already exists
 mongosh --host mongos:27017 --quiet <<EOF
+for (const shard of [
+  "shard1rs/shard1s1:27017,shard1s2:27017,shard1s3:27017",
+  "shard2rs/shard2s1:27017,shard2s2:27017,shard2s3:27017",
+]) {
+  const result = sh.addShard(shard)
+  printjson(result)
+}
+EOF
 
-// Switch to database
+echo "Configuring Sharding for AIS_04_18..."
+mongosh --host mongos:27017 --quiet <<EOF
+try {
+  sh.enableSharding("AIS_04_18")
+  print("Database sharding enabled")
+} catch (e) {
+  print("Database already sharded or error: " + e.message)
+}
+
 db = db.getSiblingDB("AIS_04_18")
 
-// Create collection
-db.createCollection("data")
+try {
+  sh.shardCollection(
+    "AIS_04_18.data",
+    { mmsi: "hashed" }
+  )
+  print("Collection sharded")
+} catch (e) {
+  print("Collection already sharded or error: " + e.message)
+}
 
-// Create database
-db.data.insertOne({
-  initialized: true,
-  timestamp: new Date()
-})
-
-// Enable sharding on database
-sh.enableSharding("AIS_04_18")
-
-// Shard the collection
-sh.shardCollection("AIS_04_18.data", { timestamp: 1 })
-
-
-print("AIS_04_18 sharding configured")
-
+try {
+  db.data.createIndex({ timestamp: 1 })
+  print("Index created")
+} catch (e) {
+  print("Index already exists or error: " + e.message)
+}
 EOF
 
 echo "Cluster setup complete!"
