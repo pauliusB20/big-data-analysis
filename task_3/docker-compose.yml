@@ -37,6 +37,7 @@
     # shard 1
     shard1s1:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20001:27017
@@ -48,6 +49,7 @@
 
     shard1s2:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20002:27017
@@ -59,6 +61,7 @@
 
     shard1s3:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20003:27017
@@ -71,6 +74,7 @@
     # shard 2
     shard2s1:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20004:27017
@@ -82,6 +86,7 @@
 
     shard2s2:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20005:27017
@@ -93,6 +98,7 @@
 
     shard2s3:
       image: mongo
+      restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - 20006:27017
@@ -102,42 +108,9 @@
       networks:
         - mongo-cluster
 
-    # shard 3
-    shard3s1:
-      image: mongo
-      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
-      ports:
-        - 20007:27017
-      volumes:
-        - shard3s1:/data/db
-      
-      networks:
-        - mongo-cluster
-
-    shard3s2:
-      image: mongo
-      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
-      ports:
-        - 20008:27017
-      volumes:
-        - shard3s2:/data/db
-      
-      networks:
-        - mongo-cluster
-
-    shard3s3:
-      image: mongo
-      command: mongod --shardsvr --replSet shard3rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
-      ports:
-        - 20009:27017
-      volumes:
-        - shard3s3:/data/db
-      
-      networks:
-        - mongo-cluster
-
     mongos:
       image: mongo
+      restart: unless-stopped
       ports:
         - 30000:27017
 
@@ -162,9 +135,6 @@
         - shard2s1
         - shard2s2
         - shard2s3
-        - shard3s1
-        - shard3s2
-        - shard3s3
         - mongos
       volumes:
         - ./cluster-init.sh:/init.sh
@@ -183,9 +153,6 @@
     shard2s1:
     shard2s2:
     shard2s3:
-    shard3s1:
-    shard3s2:
-    shard3s3:
 
   networks:
     mongo-cluster:
