@@ -5,6 +5,11 @@ TAKS_PER_WORKER = 1
 LOG_EVERY = 10
 WORKERS = 4
 MONGO_URI = "mongodb://localhost:30000"
+
 MONGO_DB = "AIS_04_18"
 MONGO_COLLECTION = "data"
 MONGO_CONNECTIONS = 30
+
+# For task 3
+TARGET_COL = "filtered_data"
+BATCH_SIZE = 5000

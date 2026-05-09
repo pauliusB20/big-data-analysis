@@ -50,6 +50,11 @@ class FileReader:
             nav_status_idx = headline.index("Navigational status") #added for anomaly B
             type_idx = headline.index("Type of mobile") #added for anomaly B 
 
+            # NEW - Task 3 and 4
+            rot_idx = headline.index("ROT")
+            cog_idx = headline.index("COG")
+            heading_idx = headline.index("Heading")
+
             for row in csv_reader:
                 
                 if len(chunk) > self.chunk_size:
@@ -74,7 +79,10 @@ class FileReader:
                     ship_type = row[ship_type_idx]
                     nav_status = str(row[nav_status_idx])
                     vessel_type = str(row[type_idx])
-                    
+                    rot = np.float32(row[rot_idx])
+                    cog = np.float32(row[cog_idx])
+                    heading = np.float32(row[heading_idx])
+
                     new_row = ShipRow(
                         mmsi=mmsi,
                         timestamp=timestamp,
@@ -85,7 +93,11 @@ class FileReader:
                         cargo_type=cargo_type,
                         ship_type=ship_type,
                         nav_status=nav_status, #New, added for anomaly B
-                        vessel_type=vessel_type #New, added for anomaly B
+                        vessel_type=vessel_type, #New, added for anomaly B
+
+                        rot=rot,         # NEW
+                        cog=cog,         # NEW
+                        heading=heading  # NEW
                     ) 
                     chunk.append(new_row._get_doc())
                 
