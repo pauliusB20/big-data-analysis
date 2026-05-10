@@ -7,11 +7,8 @@ until mongosh --host mongo_1_config:27017 --quiet --eval "db.runCommand({ ping: 
 done
 
 echo "Initializing config replica set..."
-mongosh --host mongo_1_config:27017 --quiet <<EOF
+mongosh --host mongo_1_config:27017 --quiet --eval '
 try {
-  rs.status()
-  print("cfgrs already initialized")
-} catch (e) {
   rs.initiate({
     _id: "cfgrs",
     configsvr: true,
@@ -21,14 +18,22 @@ try {
       { _id: 2, host: "mongo_3_config:27017" }
     ]
   })
+} catch (e) {
+  printjson(e)
 }
-EOF
+'
 
 echo "Waiting for cfgrs PRIMARY..."
 
+# until mongosh --host mongo_1_config:27017 --quiet --eval \
+# 'rs.status().members.some(m => m.stateStr == "PRIMARY")' \
+# 2>/dev/null | grep -q true; do
+#   sleep 2
+# done
+
 until mongosh --host mongo_1_config:27017 --quiet --eval \
 'rs.status().members.some(m => m.stateStr == "PRIMARY")' \
-2>/dev/null | grep -q true; do
+| grep -q true; do
   sleep 2
 done
 
@@ -45,9 +50,7 @@ done
 echo "Initializing shard shard1s replica set..."
 mongosh --host shard1s1:27017 --quiet <<EOF
 try {
-  rs.status()
   print("shard1rs already initialized")
-} catch (e) {
   rs.initiate({
     _id: "shard1rs",
     members: [
@@ -56,6 +59,8 @@ try {
       { _id: 2, host: "shard1s3:27017" }
     ]
   })
+} catch (e) {
+  printjson(e)
 }
 EOF
 
@@ -70,10 +75,7 @@ done
 echo "Initializing shard shard2rs replica set..."
 mongosh --host shard2s1:27017 --quiet <<EOF
 try {
-  rs.status()
-  print("shard2rs already initialized")
-} catch (e) {
-  rs.initiate({
+   rs.initiate({
     _id: "shard2rs",
     members: [
       { _id: 0, host: "shard2s1:27017" },
@@ -81,6 +83,9 @@ try {
       { _id: 2, host: "shard2s3:27017" }
     ]
   })
+  print("shard2rs already initialized")
+} catch (e) {
+   printjson(e)
 }
 EOF
 
@@ -92,6 +97,7 @@ until mongosh --host shard2s1:27017 --quiet --eval \
   sleep 2
 done
 
+# NOTE: Keep repeating untill the command succeeds. If fails, sleeps 2 seconds
 
 echo "Waiting for mongos to be ready..."
 until mongosh --host mongos:27017 --quiet --eval "db.runCommand({ ping: 1 }).ok" 2>/dev/null; do

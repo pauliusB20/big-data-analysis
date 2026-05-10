@@ -21,7 +21,7 @@ done
 echo "Waiting for cfgrs PRIMARY..."
 
 until mongosh --host mongo_1_config:27017 --quiet --eval \
-'rs.status().myState == 1' 2>/dev/null; do
+'rs.status().myState == 1' 2>/dev/null | grep -q true; do
   sleep 2
 done
 

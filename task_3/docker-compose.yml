@@ -1,6 +1,7 @@
   services:
     mongo_1_config:
-      image: mongo
+      image: mongo:7
+      container_name: mongo_1_config
       command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
         - "3333:27017"
@@ -11,7 +12,8 @@
         - mongo-cluster
 
     mongo_2_config:
-      image: mongo
+      image: mongo:7
+      container_name: mongo_2_config
       restart: unless-stopped
       command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -23,7 +25,8 @@
         - mongo-cluster
 
     mongo_3_config:
-      image: mongo
+      image:  mongo:7
+      container_name: mongo_3_config
       restart: unless-stopped
       command: mongod --configsvr --replSet cfgrs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -36,7 +39,8 @@
 
     # shard 1
     shard1s1:
-      image: mongo
+      image:  mongo:7
+      container_name: shard1s1
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -48,7 +52,8 @@
         - mongo-cluster
 
     shard1s2:
-      image: mongo
+      image:  mongo:7
+      container_name: shard1s2
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -60,7 +65,8 @@
         - mongo-cluster
 
     shard1s3:
-      image: mongo
+      image:  mongo:7
+      container_name: shard1s3
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard1rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -73,7 +79,8 @@
 
     # shard 2
     shard2s1:
-      image: mongo
+      image:  mongo:7
+      container_name: shard2s1
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -85,7 +92,8 @@
         - mongo-cluster
 
     shard2s2:
-      image: mongo
+      image:  mongo:7
+      container_name: shard2s2
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -97,7 +105,8 @@
         - mongo-cluster
 
     shard2s3:
-      image: mongo
+      image:  mongo:7
+      container_name: shard2s3
       restart: unless-stopped
       command: mongod --shardsvr --replSet shard2rs --wiredTigerCacheSizeGB 0.25 --port 27017 --dbpath /data/db
       ports:
@@ -109,7 +118,8 @@
         - mongo-cluster
 
     mongos:
-      image: mongo
+      image:  mongo:7
+      container_name: mongos
       restart: unless-stopped
       ports:
         - 30000:27017
