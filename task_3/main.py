@@ -1,19 +1,20 @@
+from filter import run_task_3_filtering
+from time_analysis import calculate_delta_t
 from pymongo.collection import Collection
 from pymongo import MongoClient, errors
 from multiprocessing import Pool
 from helper import FileReader
 from datetime import datetime
-from db import MongoHelper
+from db import MongoDB
 import os, sys
 import config
-from point_3 import run_task_3_filtering
 
 
-mongo_helper: MongoHelper = None
+mongo: MongoDB = None
 
-def init_worker():
-    global mongo_helper
-    mongo_helper = MongoHelper()
+def init_worker() -> None:
+    global mongo
+    mongo = MongoDB()
 
 def process_file_chunk(chunk: list[dict]) -> tuple[int, int]:
     """Returns (pid, rows_processed) for progress tracking."""
@@ -21,7 +22,7 @@ def process_file_chunk(chunk: list[dict]) -> tuple[int, int]:
     
     # performing data insert
     try:
-        mongo_helper.add_to_db(chunk)
+        mongo.add_to_db(chunk)
         
     except errors.BulkWriteError as bwe:
         n_errors = len(bwe.details.get("writeErrors", []))
@@ -34,10 +35,10 @@ def process_file_chunk(chunk: list[dict]) -> tuple[int, int]:
 
     return pid, len(chunk)
 
-def _test_mongo_connection() -> MongoHelper:
+def _test_mongo_connection() -> MongoDB:
     print("INFO: Testing mongodb cluster connection before insert")
     try:
-        mongo_helper = MongoHelper()
+        mongo_helper = MongoDB()
         mongo_helper._worker_client.admin.command("ping")
         print(f"SUCCESS: Conneced to {config.MONGO_URI}")
     
@@ -79,17 +80,20 @@ def run_ais_db_insert() -> None:
         except Exception as exc:
             # Any worker exception surfaces here — log it before the pool tears down.
             print(f"[MAIN] Pipeline failed: {exc!r}")
-            raise
 
     print(f"[MAIN] Done. Total chunks: {task_counts}, total rows: {total_rows:,}")
 
-def _show_execution_statistics(start_time: datetime, end_time: datetime) -> None:
+def show_execution_statistics(start_time: datetime) -> None:
+    end_time = datetime.now()
+    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     total_execution_seconds = (end_time - start_time).seconds
     total_execution_minutes_raw = total_execution_seconds / 60
     seconds_part = total_execution_minutes_raw % 1
     total_exec_sec = round(60 * seconds_part, 2)
     total_exec_min = int(total_execution_minutes_raw)
     
+    print(f"Program start time: {start_time_str}")
+    print(f"Program end time: {end_time_str}")
     print(
         f"Total execution: {total_exec_min} minutes "
         f"{total_exec_sec} seconds"
@@ -102,29 +106,16 @@ if __name__ == "__main__":
     start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Program start time: {start_time_str}")
     
-    mongo_helper = _test_mongo_connection()
+    _test_mongo_connection()
     
-    mongo_helper = MongoHelper()
-    if not mongo_helper._is_db_full():
+    mongo = MongoDB()
+    if not mongo._is_db_full():
         print("Loading data from dataset file and inserting into mongodb...")
         run_ais_db_insert()
-        
-    # Data analysis part for analyzing records
-    # code for task 3.3 and task 3.4 goes here
 
-    # --- TASK 3: PARALLEL FILTERING ---
     run_task_3_filtering()
-    
-    # ------------------
-    # --- TASK 4: DELTA T CALCULATION ---
-    from task4 import calculate_delta_t
-    calculate_delta_t()
-    end_time = datetime.now()
-    end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"Program start time: {start_time_str}")
-    print(f"Program end time: {end_time_str}")
-    
-    _show_execution_statistics(start_time, end_time)
+    calculate_delta_t()    
+    show_execution_statistics(start_time)
     
     
     print("DONE")

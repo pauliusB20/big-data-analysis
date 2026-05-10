@@ -1,3 +1,4 @@
+  # NOTE: after docker-compose up -d, wait 5 seconds for the services to be fully started
   services:
     mongo_1_config:
       image: mongo:7

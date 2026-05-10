@@ -1,8 +1,12 @@
 from pymongo import MongoClient, errors
 from multiprocessing import Pool
+from collections.abc import Iterable
+from db import MongoDB
 import os
 import time
 import config
+
+mongo: MongoDB = None
 
 def _is_mmsi_valid(mmsi: str) -> bool:
     """Validates real ship MMSI codes"""
@@ -15,11 +19,13 @@ def _is_mmsi_valid(mmsi: str) -> bool:
         and len(set(mmsi)) > 1
     )
 
-def init_worker():
+def init_worker() -> None:
     """Gives to each parallel worker their own database connection."""
-    global client, db
-    client = MongoClient(config.MONGO_URI, maxPoolSize=10, serverSelectionTimeoutMS=5000)
-    db = client[config.MONGO_DB]
+    global mongo
+    mongo = MongoDB(max_pool_size=10)
+    # global client, db
+    # client = MongoClient(config.MONGO_URI, maxPoolSize=10, serverSelectionTimeoutMS=5000)
+    # db = client[config.MONGO_DB]
 
 def process_mmsi_chunk(mmsi_chunk: list[str]) -> tuple[int, int]:
     """
@@ -43,16 +49,14 @@ def process_mmsi_chunk(mmsi_chunk: list[str]) -> tuple[int, int]:
 }
     
     # pull only the data that matches the query and the config limits
-    cursor = db[config.MONGO_COLLECTION].find(query, {"_id": 0}).batch_size(config.BATCH_SIZE)
-    
+    cursor = mongo.collection.find(query, {"_id": 0}).batch_size(config.BATCH_SIZE)    
     batch = []
+    
     for doc in cursor:
         batch.append(doc)
         if len(batch) >= config.BATCH_SIZE:
             try:
-                db[config.TARGET_COL].insert_many(batch, ordered=False)
-
-            
+                mongo.collection_filtered.insert_many(batch, ordered=False)            
                 rows_inserted += len(batch)
 
             except errors.BulkWriteError as e:
@@ -70,8 +74,7 @@ def process_mmsi_chunk(mmsi_chunk: list[str]) -> tuple[int, int]:
     if batch:
         # For catch the last batch which may be smaller than BATCH_SIZE
         try:
-            db[config.TARGET_COL].insert_many(batch, ordered=False)
-
+            mongo.collection_filtered.insert_many(batch, ordered=False)
             rows_inserted += len(batch)
 
         except errors.BulkWriteError as e:
@@ -88,7 +91,7 @@ def process_mmsi_chunk(mmsi_chunk: list[str]) -> tuple[int, int]:
 
     return pid, rows_inserted
 
-def chunk_list(lst, n):
+def chunk_list(lst, n) -> Iterable[list]:
     """Helper generator to break a list into chunks of size n"""
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
@@ -96,30 +99,32 @@ def chunk_list(lst, n):
 def run_task_3_filtering():
     print("\n--- STARTING TASK 3: PARALLEL NOISE FILTERING ---")
     start_time = time.time()
-    
-    client = MongoClient(config.MONGO_URI)
-    db = client[config.MONGO_DB]
+    mongo = MongoDB()
     
     # cleans old results in case of re-run
-    print(f"Cleaning up old results in {config.TARGET_COL}...")
-    db[config.TARGET_COL].drop()
+    print(f"Cleaning up old results in {config.MONGO_COLLECTION_FILTERED}...")
+    mongo.collection_filtered.drop()
 
     # re-sets the code
     print("Creating index...")
 
     # main filtering index
-    db[config.MONGO_COLLECTION].create_index([("mmsi", 1),
-                                              ("timestamp", 1)])
+    mongo.collection.create_index([
+        ("mmsi", 1), 
+        ("timestamp", 1)
+    ])
 
     # helps to coordinate filtering
-    db[config.MONGO_COLLECTION].create_index([
+    mongo.collection.create_index([
         ("latitude", 1),
         ("longitude", 1)
     ])
 
     print("Making sure target collection has indexes")
-    db[config.TARGET_COL].create_index([("mmsi", 1), ("timestamp", 1)],
-                                        unique=True) # Unique index to prevent duplicates
+    mongo.collection_filtered.create_index([
+        ("mmsi", 1), ("timestamp", 1)],
+        unique=True
+    ) # Unique index to prevent duplicates
     
     print("Analyzing rows to find vessels with >= 100 points")
     # counts the points and drop vessels with < 100 points
@@ -128,7 +133,10 @@ def run_task_3_filtering():
         {"$match": {"count": {"$gte": 100}}}
     ]
     
-    valid_mmsis = [doc["_id"] for doc in db[config.MONGO_COLLECTION].aggregate(pipeline, allowDiskUse=True)]
+    valid_mmsis = [
+        doc["_id"] 
+        for doc in mongo.collection.aggregate(pipeline, allowDiskUse=True)
+    ]
     
     # early filter for the unique MMSIs in Python
     valid_mmsis = [mmsi for mmsi in valid_mmsis if _is_mmsi_valid(mmsi)]
@@ -140,16 +148,18 @@ def run_task_3_filtering():
     
     print(f"Starting {config.WORKERS} parallel workers to filter the data")
     with Pool(processes=config.WORKERS, initializer=init_worker) as pool:
-        for i, (pid, inserted) in enumerate(pool.imap_unordered(process_mmsi_chunk, mmsi_chunks)):
+        for i, (pid, inserted) in enumerate(
+                pool.imap_unordered(process_mmsi_chunk, mmsi_chunks)
+            ):
             total_inserted += inserted
             # logs progress every 10 chunks
             if (i + 1) % 10 == 0 or (i + 1) == total_chunks:
-                print(f"[Worker {pid}] Processed chunk {i + 1}/{total_chunks} | Total Clean Rows: {total_inserted:,}")
+                print(
+                    f"[Worker {pid}] Processed chunk {i + 1}/{total_chunks}"
+                    f"| Total Clean Rows: {total_inserted:,}"
+                )
 
     elapsed = round((time.time() - start_time) / 60, 2)
     print(f"--- TASK 3 COMPLETE ---")
     print(f"Total Clean Rows Saved: {total_inserted:,}")
     print(f"Execution Time: {elapsed} minutes")
-
-if __name__ == "__main__":
-    run_task_3_filtering()
