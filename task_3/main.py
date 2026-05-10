@@ -6,6 +6,7 @@ from datetime import datetime
 from db import MongoHelper
 import os, sys
 import config
+from point_3 import run_task_3_filtering
 
 
 mongo_helper: MongoHelper = None
@@ -110,7 +111,9 @@ if __name__ == "__main__":
         
     # Data analysis part for analyzing records
     # code for task 3.3 and task 3.4 goes here
-    
+
+    # --- TASK 3: PARALLEL FILTERING ---
+    run_task_3_filtering()
     
     # ------------------
     
@@ -120,5 +123,6 @@ if __name__ == "__main__":
     print(f"Program end time: {end_time_str}")
     
     _show_execution_statistics(start_time, end_time)
+    
     
     print("DONE")
