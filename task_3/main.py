@@ -116,7 +116,9 @@ if __name__ == "__main__":
     run_task_3_filtering()
     
     # ------------------
-    
+    # --- TASK 4: DELTA T CALCULATION ---
+    from task4 import calculate_delta_t
+    calculate_delta_t()
     end_time = datetime.now()
     end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"Program start time: {start_time_str}")
