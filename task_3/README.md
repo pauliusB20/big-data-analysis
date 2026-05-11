@@ -15,7 +15,8 @@ mongo db sharded cluster
 mongo db containers to form the sharded cluster
 
 NOTE: Linux OS is required for starting the cluster. Scripts for the cluster
-written for Linux and not intended for cross platform (Like Windows or Mac).
+are written to be used in the Linux OS and are not intended for cross platform 
+usage (Like Windows or Mac).
 
 In order to start docker cluster
 1. Create python vietual environemtn using "python3 -m venv task_3_env". 
