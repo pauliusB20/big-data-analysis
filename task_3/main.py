@@ -40,7 +40,7 @@ def _test_mongo_connection() -> MongoDB:
     try:
         mongo_helper = MongoDB()
         mongo_helper._worker_client.admin.command("ping")
-        print(f"SUCCESS: Conneced to {config.MONGO_URI}")
+        print(f"SUCCESS: Connected to {config.MONGO_URI}")
     
     except Exception as error:
         sys.exit(f"ERROR: Received error while testing: {str(error)}")
