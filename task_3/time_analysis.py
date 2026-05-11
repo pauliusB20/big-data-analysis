@@ -1,24 +1,22 @@
 from pymongo import MongoClient
 from datetime import datetime
 import matplotlib.pyplot as plt
+from db import MongoDB
 import numpy as np
 import config
 import time
 
 def calculate_delta_t():
     print("\n--- STARTING TASK 4: DELTA T CALCULATION ---")
+    mongo_helper = MongoDB()
     start_time = time.time()
-
-    client = MongoClient(config.MONGO_URI)
-    col = client[config.MONGO_DB][config.TARGET_COL]
-
-    mmsi_list = col.distinct("mmsi")
+    mmsi_list = mongo_helper.collection.distinct("mmsi")
     print(f"INFO: Found {len(mmsi_list)} vessels in filtered collection")
 
     all_deltas = []
 
     for mmsi in mmsi_list:
-        docs = list(col.find(
+        docs = list(mongo_helper.collection.find(
             {"mmsi": mmsi},
             {"_id": 0, "timestamp": 1}
         ).sort("timestamp", 1))
@@ -28,9 +26,8 @@ def calculate_delta_t():
             t1 = docs[i]["timestamp"]
 
             if isinstance(t0, str):
-                fmt = "%d/%m/%Y %H:%M:%S"
-                t0 = datetime.strptime(t0, fmt)
-                t1 = datetime.strptime(t1, fmt)
+                t0 = datetime.strptime(t0, "%d/%m/%Y %H:%M:%S")
+                t1 = datetime.strptime(t1, "%d/%m/%Y %H:%M:%S")
 
             delta_ms = int((t1 - t0).total_seconds() * 1000)
             if delta_ms > 0:
@@ -68,6 +65,3 @@ def calculate_delta_t():
 
     elapsed = round((time.time() - start_time) / 60, 2)
     print(f"--- TASK 4 COMPLETE --- Execution Time: {elapsed} minutes")
-
-if __name__ == "__main__":
-    calculate_delta_t()

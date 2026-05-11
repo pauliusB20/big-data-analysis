@@ -11,5 +11,5 @@ MONGO_COLLECTION = "data"
 MONGO_CONNECTIONS = 30
 
 # For task 3
-TARGET_COL = "filtered_data"
+MONGO_COLLECTION_FILTERED = "filtered_data"
 BATCH_SIZE = 5000
