@@ -117,24 +117,36 @@ Most of the ship collision analysis is done using Python PySpark library. Create
 <li>
     <h3>Results</h3>
     Colliding ships are denoted as ship A and ship B. Discovered near fishing ship collision event. Ships passed each other at a very close distance:
-    ```
-    mmsi_a : 219019287
-    timestamp_a : 2021-12-03 16:02:32
-    name_a : HG 162 NORTH OCEAN
-    lat_a : 55.243472
-    lon_a : 15.087747
-    sog_a : 5.4
-    heading_a : 220
-    mmsi_b : 219021428
-    timestamp_b : 2021-12-03 16:02:54
-    name_b : HG 165 SOUTH OCEAN
-    lat_b : 55.243482
-    lon_b : 15.087745
-    sog_b : 1.6
-    heading_b : 173
-    heading_diff : 47
-    distance_m : 1.1191536635713002
-    ```
+    <div>
+    <table>
+  <thead>
+    <tr>
+      <th>Field</th>
+      <th>Vessel A</th>
+      <th>Vessel B</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>MMSI</td><td>219019287</td><td>219021428</td></tr>
+    <tr><td>Name</td><td>HG 162 NORTH OCEAN</td><td>HG 165 SOUTH OCEAN</td></tr>
+    <tr><td>Timestamp</td><td>2021-12-03 16:02:32</td><td>2021-12-03 16:02:54</td></tr>
+    <tr><td>Latitude</td><td>55.243472</td><td>55.243482</td></tr>
+    <tr><td>Longitude</td><td>15.087747</td><td>15.087745</td></tr>
+    <tr><td>SOG</td><td>5.4 kn</td><td>1.6 kn</td></tr>
+    <tr><td>Heading</td><td>220°</td><td>173°</td></tr>
+  </tbody>
+</table>
+
+<h3>Encounter Metrics</h3>
+
+<table>
+  <tbody>
+    <tr><td>Heading Difference</td><td>47°</td></tr>
+    <tr><td>Haversine Distance</td><td>1.12 m</td></tr>
+  </tbody>
+</table>
+        
+    </div>
     <ul>
         <li>Both of the ships have different MMSI and are moving. The ships also are non-stationary based on knot speeds and the speeds are higher than 1. Additionally, there is variation in the coordinates ship coordinates that may show sign of ship movement. The interactive map shows how the ships are moving in the sea</li>
         <li>The ships were at a distance about 1.119 meters of each other in the near collision event</li>
