@@ -40,13 +40,23 @@ Contains a .csv file `part-00000-fe4f12b2-81b6-4591-993a-b64ee28f9041-c000.csv` 
 
 Contains a .csv file `part-00000-fe4f12b2-81b6-4591-993a-b64ee28f9041-c000.csv` which holds all the ship B movement pings that are related to the near collision event
 
-<h3>In order to start the container</h3>
+<h3>Docker Containerization</h3>
 
 <ul>
 <li>Install docker</li>
-<li>In the linux-based command line terminal and in the task__4/main  working directory type ```docker-compose up -d```. This pull the task 4 image from the docker registry</li>
+
+<li> Open docker public repository link: https://hub.docker.com/r/pauliusb24/web-applications </li>
+
+<li> Find and copy command "docker pull pauliusb24/web-applications:1.0" </li>
+
+<li> Open Linux terminal and in the terminal go to task__4/main folder.</li>
+
+<li>While beeing in the main folder terminal working directory, type in command  in the terminal "docker pull pauliusb24/web-applications:1.0"</li>
+
+<li> After pulling the image, type in command "docker-compose up -d" </li>
+
 <li>Open the web browser and type localhost:8888</li>
-<li>In the web browser Jupyter UI, open main.ipynb jupyter notebook and you will see all the code related to the AIS data ship analysis task</li>
+<li>In the web browser Jupyter UI, open work/main.ipynb jupyter notebook and you will see all the code related to the AIS data ship analysis task</li>
 </ul>
 
 <h3>Methodology</h3>
