@@ -3,3 +3,5 @@
 * task_1/ - folder that contains task_1 assignment source code + README file
 
 * task_3/ - folder that contains task_3 assignment source code + README file
+
+* task_4/ - folder that contains task 4 egzam assignment source code + README file
