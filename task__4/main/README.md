@@ -145,7 +145,8 @@ Most of the ship collision analysis is done using Python PySpark library. Create
     <tr><td>Haversine Distance</td><td>1.12 m</td></tr>
   </tbody>
 </table>
-        
+ </li>
+ <li>
     </div>
     <ul>
         <li>Both of the ships have different MMSI and are moving. The ships also are non-stationary based on knot speeds and the speeds are higher than 1. Additionally, there is variation in the coordinates ship coordinates that may show sign of ship movement. The interactive map shows how the ships are moving in the sea</li>
@@ -155,8 +156,8 @@ Most of the ship collision analysis is done using Python PySpark library. Create
         <li>Each of the fishing ships were very close and based on the plotted map. Additionally, the Python script generated Javascript application based shows that the ships were passing each near an island in the Baltic sea</li>
         <li>Likely reasons for this near close collision: human error, poor visibility, mechanical failures and etc.</li>
     </ul>
-</li>
 
+</li>
 </ul>
 
 
