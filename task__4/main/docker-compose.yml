@@ -1,0 +1,19 @@
+services:
+  jupyter:
+    container_name: task_4
+    # Uncomment for testing simple image build with file 
+    # build: .
+    # for pulling image from my public registry
+    image: pauliusb24/web-applications:1.0
+    volumes:
+      - .:/home/jovyan/work
+    ports:
+      - "8888:8888"
+    command:
+      - start-notebook.py
+      - --ServerApp.token=
+      - --ServerApp.password=
+  
+
+
+    
